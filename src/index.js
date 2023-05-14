@@ -115,6 +115,7 @@ const sendMessageToChatGpt = async (message, id) => {
     const { choices } = help;
     
     messages = [
+        ...messages,
         ...choices.map(({ message }) => ({ role: message.role, content: message.content }))
     ];
 
