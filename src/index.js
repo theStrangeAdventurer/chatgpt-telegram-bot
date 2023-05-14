@@ -4,12 +4,12 @@ import axios from 'axios';
 import { Configuration, OpenAIApi } from 'openai';
 import showdown from 'showdown';
 
+dotenv.config();
+
 const converter = new showdown.Converter();
 
 // Пока не испоьлзуется, возможно понадобится, если буду делать web морду
 const getHtmlfromMarkdown = (text) => converter.makeHtml(textStr);
-
-dotenv.config();
 
 // Аккаунты, которые могут писать этому боту, перечисленые через , (без @) в .env файле
 const accounts = (process.env.ACCOUNTS_WHITE_LIST || '').trim().split(',');
@@ -54,7 +54,9 @@ const sendReply = (ctx, choices) => {
 
     ctx.reply(textStr
             .replace(/\./g, "\\.")
-            .replace(/-/g, "\\-")
+            .replace(/-/g, "\-")
+            .replace(/\(/g, "\(")
+            .replace(/\)/g, "\)")
         , { parse_mode: 'MarkdownV2' })
         .catch((error) => {
             // TODO: Добавить нормальный логгер
