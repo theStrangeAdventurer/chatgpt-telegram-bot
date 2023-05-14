@@ -11,6 +11,9 @@ const getHtmlfromMarkdown = (text) => converter.makeHtml(textStr);
 
 dotenv.config();
 
+// Аккаунты, которые могут писать этому боту, перечисленые через , (без @) в .env файле
+const accounts = (process.env.ACCOUNTS_WHITE_LIST || '').trim().split(',');
+
 const configuration = new Configuration({
   apiKey: process.env.GPT_API_KEY,
 });
@@ -56,8 +59,13 @@ const sendReply = (ctx, choices) => {
         .catch((error) => {
             // TODO: Добавить нормальный логгер
             // error?.response?.description || 'Unexpected error'
+            console.log('Error: ', error?.response?.description || error);
             ctx.reply(textStr);
         })
+}
+
+const accessDenied = (ctx) => {
+    ctx.reply('Извини, я тебя не знаю...')
 }
 
 const requestAssist = async (messages = []) => {
@@ -114,6 +122,11 @@ const sendMessageToChatGpt = async (message, id) => {
 }
 
 bot.on('callback_query', (ctx) => {
+    const username = ctx.update.callback_query.message.chat.username;
+    if (accounts.length && !accounts.includes(username)) {
+        accessDenied(ctx);
+        return;
+    }
     const data = ctx.update.callback_query.data;
     const id = ctx.update.callback_query.from.id;
 
@@ -129,6 +142,10 @@ bot.on('callback_query', (ctx) => {
 });
 
 bot.on('text', async (ctx) => {
+    if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+        accessDenied(ctx);
+        return;
+    }
     switch(ctx.message.text) {
         case '/start':
             if (messagesStore.has(ctx.message.from.id)) {
@@ -170,6 +187,10 @@ bot.on('text', async (ctx) => {
 });
 
 bot.on('voice', (ctx) => {
+    if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+        accessDenied(ctx);
+        return;
+    }
     const { voice, from } = ctx.message;
     const { id } = from;
     const { file_id } = voice;
