@@ -55,8 +55,8 @@ const sendReply = (ctx, choices) => {
     ctx.reply(textStr
             .replace(/\./g, "\\.")
             .replace(/-/g, "\-")
-            .replace(/\(/g, "\(")
-            .replace(/\)/g, "\)")
+            .replace(/\(/g, "\\(")
+            .replace(/\)/g, "\\)")
         , { parse_mode: 'MarkdownV2' })
         .catch((error) => {
             // TODO: Добавить нормальный логгер
