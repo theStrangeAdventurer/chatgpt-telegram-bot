@@ -81,12 +81,16 @@ const accessDenied = (ctx) => {
 }
 
 const requestAssist = async (messages = []) => {
-    const { data } = await openai.createChatCompletion({
-        model: 'gpt-3.5-turbo',
-        messages: messages
-    });
-
-    return data;
+    try {
+        const { data } = await openai.createChatCompletion({
+            model: 'gpt-3.5-turbo',
+            messages: messages
+        });
+    
+        return data;
+    } catch (error) {
+        return { choices: [], error: error }
+    }
 };
 
 /**
@@ -121,6 +125,14 @@ const iamToken = {
     }
 }
 
+const replyWithRoles = (ctx) => {
+    ctx.reply('Выбери роль ассистента: ', {
+        reply_markup: {
+            inline_keyboard: roleButtons
+        } 
+    });
+}
+
 const recognizeVoice = async (buffer) => {
     const response = await axios({
         method: 'post',
@@ -152,9 +164,17 @@ const sendMessageToChatGpt = async (message, id) => {
     ];
 
     console.dir(messages);
+
     const help = await requestAssist(messages);
-    const { choices } = help;
-    
+    const { choices, error } = help;
+
+    if (error) {
+        console.debug(error);
+        ctx.replyWithHTML(`Произошла ошибка, попробуйте начать заново: <code>/start</code>`);
+        messagesStore.delete(id);
+        return;
+    }
+
     messages = [
         ...messages,
         ...choices.map(({ message }) => ({ role: message.role, content: message.content }))
@@ -198,24 +218,14 @@ const runBot = () => {
             case '/start':
                 if (messagesStore.has(ctx.message.from.id)) {
                     messagesStore.delete(ctx.message.from.id);
-                    ctx.replyWithHTML(`<code>Стер всю память боту, теперь он ничего не помнит</code>`);
-                } else {
-                    ctx.reply('Привет! Выбери роль ассистента: ', {
-                        reply_markup: {
-                            inline_keyboard: roleButtons
-                        } 
-                    });
                 }
+                replyWithRoles(ctx);
                 break;
             case '/role':
-                ctx.reply('Выбери роль ассистента: ', {
-                    // TODO: Убрать дубликат кода
-                    reply_markup: {
-                        inline_keyboard: roleButtons
-                    } 
-                });
+                replyWithRoles(ctx);
                 break;
             default:
+                // Все команды обработаны в case выше
                 if (ctx.message.text.startsWith('/')) {
                     ctx.reply('Неизвестная команда: ' + ctx.message.text);
                     return;
@@ -238,7 +248,7 @@ const runBot = () => {
         ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
             // Получаем ссыль на голосовое сообщение
             const { href } = fileLink;
-            
+ 
             try {
                 // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
                 const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
