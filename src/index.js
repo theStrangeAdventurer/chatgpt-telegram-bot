@@ -12,6 +12,7 @@ const converter = new showdown.Converter();
 const getHtmlfromMarkdown = (text) => converter.makeHtml(textStr);
 
 // Аккаунты, которые могут писать этому боту, перечисленые через , (без @) в .env файле
+// Если ACCOUNTS_WHITE_LIST пустая - бот будет отвечать всем
 const accounts = (process.env.ACCOUNTS_WHITE_LIST || '').trim().split(',');
 
 const configuration = new Configuration({
@@ -42,6 +43,14 @@ const assistantContext = {
     ]
 };
 
+// callback_data должна быть ключем assistantContext
+// Чтобы добавить роль, ее нужно описать и в assistantContext и в roleButtons
+const roleButtons = [
+    [ { text: "Программист", callback_data: "programmer" }],
+    [ { text: "Дизайнер", callback_data: "designer" }],
+    [ { text: "Дружбан", callback_data: "buddy" }],
+];
+
 // Тут храним контекст сообщений для каждого чата
 const messagesStore = new Map();
 
@@ -54,9 +63,10 @@ const sendReply = (ctx, choices) => {
 
     ctx.reply(textStr
             .replace(/\./g, "\\.")
-            .replace(/-/g, "\-")
+            .replace(/\-/g, "\\-")
             .replace(/\(/g, "\\(")
             .replace(/\)/g, "\\)")
+            .replace(/\!/g, "\\!")
         , { parse_mode: 'MarkdownV2' })
         .catch((error) => {
             // TODO: Добавить нормальный логгер
@@ -79,12 +89,44 @@ const requestAssist = async (messages = []) => {
     return data;
 };
 
+/**
+ * Получение iam токена https://cloud.yandex.ru/docs/iam/operations/iam-token/create
+ * @returns {Promise<{ iamToken: string; expiresAt?: string }>}
+ */
+const getIamToken = async () => {
+    try {
+        const { data } = await axios.post('https://iam.api.cloud.yandex.net/iam/v1/tokens', {
+            yandexPassportOauthToken: process.env.YA_PASSPORT_TOKEN
+        });
+        return data;
+    } catch (err) {
+        console.log('Error get iam token: ', err.response.description || err.message)
+        return { iamToken: null };
+    }
+}
+
+getIamToken();
+
+// Концепции https://cloud.yandex.ru/docs/iam/concepts/authorization/iam-token
+const iamToken = {
+    value: null,
+    async runUpdates() {
+        const { iamToken } = await getIamToken();
+        this.value = iamToken;
+        const interval = setInterval(async () => {
+            const { iamToken: intervalToken } = await getIamToken();
+            this.value = intervalToken;
+        }, 1000 * 60 * 60); // Раз в час выписываем новый iam токен, потому что он протухает за 12 часов
+        return interval;
+    }
+}
+
 const recognizeVoice = async (buffer) => {
     const response = await axios({
         method: 'post',
         url: `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=${process.env.BUCKET_ID}&lang=ru-RU`,
         headers: {
-          Authorization: `Bearer ${process.env.YC_TOKEN}`,
+          Authorization: `Bearer ${iamToken.value}`,
           'Content-Type': 'application/octet-stream'
         },
         data: buffer
@@ -157,11 +199,7 @@ bot.on('text', async (ctx) => {
             } else {
                 ctx.reply('Привет! Выбери роль ассистента: ', {
                     reply_markup: {
-                        inline_keyboard: [
-                            [ { text: "Программист", callback_data: "programmer" }],
-                            [ { text: "Дизайнер", callback_data: "designer" }],
-                            [ { text: "Дружбан", callback_data: "buddy" }],
-                        ]
+                        inline_keyboard: roleButtons
                     } 
                 });
             }
@@ -170,11 +208,7 @@ bot.on('text', async (ctx) => {
             ctx.reply('Выбери роль ассистента: ', {
                 // TODO: Убрать дубликат кода
                 reply_markup: {
-                    inline_keyboard: [
-                        [ { text: "Программист", callback_data: "programmer" }],
-                        [ { text: "Дизайнер", callback_data: "designer" }],
-                        [ { text: "Дружбан", callback_data: "buddy" }],
-                    ]
+                    inline_keyboard: roleButtons
                 } 
             });
             break;
@@ -201,18 +235,27 @@ bot.on('voice', (ctx) => {
     ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
         // Получаем ссыль на голосовое сообщение
         const { href } = fileLink;
-        // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
-        const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
-        // Таким образом обходимся без установки ffmpeg и
-        // Промежуточного сохранения и конвертирования файла
-        const propmt = await recognizeVoice(voiceBuffer);
-        ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
-        const choices = await sendMessageToChatGpt(
-            propmt,
-            id
-        );
-        sendReply(ctx, choices);
+        
+        try {
+            // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
+            const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
+            // Таким образом обходимся без установки ffmpeg и
+            // Промежуточного сохранения и конвертирования файла
+            const propmt = await recognizeVoice(voiceBuffer);
+            ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
+            const choices = await sendMessageToChatGpt(
+                propmt,
+                id
+            );
+            sendReply(ctx, choices);
+        } catch (error) {
+            console.log('Failed voice recognition: ', error.response.data.description || error.message);
+            ctx.reply(`Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...`)
+        }
     });
 });
 
-bot.launch();
+iamToken.runUpdates()
+    .then(_updateTimer => { // Можно отписаться от интервала обновления токенов 
+        bot.launch();
+    });
