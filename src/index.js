@@ -134,7 +134,6 @@ const recognizeVoice = async (buffer) => {
     return response.data?.result || 'Не распознано' ;
 };
 
-const bot = new Telegraf(process.env.BOT_API_KEY);
 
 const sendMessageToChatGpt = async (message, id) => {
     const assistantRole = assistantInitialContextStore.get(id) || defaultRole;
@@ -166,96 +165,103 @@ const sendMessageToChatGpt = async (message, id) => {
     return choices;
 }
 
-bot.on('callback_query', (ctx) => {
-    const username = ctx.update.callback_query.message.chat.username;
-    if (accounts.length && !accounts.includes(username)) {
-        accessDenied(ctx);
-        return;
-    }
-    const data = ctx.update.callback_query.data;
-    const id = ctx.update.callback_query.from.id;
+const runBot = () => {
 
-    if (assistantContext[data]) {
-        ctx.reply('Выбрана роль: ' + data + ', весь предыдущий контекст забывается...');
-        assistantInitialContextStore.set(id, data);
-        messagesStore.delete(id);
-        return;
-    }
+    const bot = new Telegraf(process.env.BOT_API_KEY);
 
-    ctx.reply('Неизвестная команда: ' + data);
-    
-});
+    bot.on('callback_query', (ctx) => {
+        const username = ctx.update.callback_query.message.chat.username;
+        if (accounts.length && !accounts.includes(username)) {
+            accessDenied(ctx);
+            return;
+        }
+        const data = ctx.update.callback_query.data;
+        const id = ctx.update.callback_query.from.id;
 
-bot.on('text', async (ctx) => {
-    if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-        accessDenied(ctx);
-        return;
-    }
-    switch(ctx.message.text) {
-        case '/start':
-            if (messagesStore.has(ctx.message.from.id)) {
-                messagesStore.delete(ctx.message.from.id);
-                ctx.replyWithHTML(`<code>Стер всю память боту, теперь он ничего не помнит</code>`);
-            } else {
-                ctx.reply('Привет! Выбери роль ассистента: ', {
+        if (assistantContext[data]) {
+            ctx.reply('Выбрана роль: ' + data + ', весь предыдущий контекст забывается...');
+            assistantInitialContextStore.set(id, data);
+            messagesStore.delete(id);
+            return;
+        }
+
+        ctx.reply('Неизвестная команда: ' + data);
+        
+    });
+
+    bot.on('text', async (ctx) => {
+        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+            accessDenied(ctx);
+            return;
+        }
+        switch(ctx.message.text) {
+            case '/start':
+                if (messagesStore.has(ctx.message.from.id)) {
+                    messagesStore.delete(ctx.message.from.id);
+                    ctx.replyWithHTML(`<code>Стер всю память боту, теперь он ничего не помнит</code>`);
+                } else {
+                    ctx.reply('Привет! Выбери роль ассистента: ', {
+                        reply_markup: {
+                            inline_keyboard: roleButtons
+                        } 
+                    });
+                }
+                break;
+            case '/role':
+                ctx.reply('Выбери роль ассистента: ', {
+                    // TODO: Убрать дубликат кода
                     reply_markup: {
                         inline_keyboard: roleButtons
                     } 
                 });
-            }
-            break;
-        case '/role':
-            ctx.reply('Выбери роль ассистента: ', {
-                // TODO: Убрать дубликат кода
-                reply_markup: {
-                    inline_keyboard: roleButtons
-                } 
-            });
-            break;
-        default:
-            if (ctx.message.text.startsWith('/')) {
-                ctx.reply('Неизвестная команда: ' + ctx.message.text);
-                return;
-            }
-            ctx.replyWithHTML(`<code>Запрос: ${ctx.message.text}</code>`);
-            const choices =  await sendMessageToChatGpt(ctx.message.text);
-            sendReply(ctx, choices);
-    }
-});
-
-bot.on('voice', (ctx) => {
-    if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-        accessDenied(ctx);
-        return;
-    }
-    const { voice, from } = ctx.message;
-    const { id } = from;
-    const { file_id } = voice;
-    ctx.replyWithHTML(`<code>Обрабатываю запрос...</code>`);
-    ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
-        // Получаем ссыль на голосовое сообщение
-        const { href } = fileLink;
-        
-        try {
-            // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
-            const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
-            // Таким образом обходимся без установки ffmpeg и
-            // Промежуточного сохранения и конвертирования файла
-            const propmt = await recognizeVoice(voiceBuffer);
-            ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
-            const choices = await sendMessageToChatGpt(
-                propmt,
-                id
-            );
-            sendReply(ctx, choices);
-        } catch (error) {
-            console.log('Failed voice recognition: ', error.response.data.description || error.message);
-            ctx.reply(`Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...`)
+                break;
+            default:
+                if (ctx.message.text.startsWith('/')) {
+                    ctx.reply('Неизвестная команда: ' + ctx.message.text);
+                    return;
+                }
+                ctx.replyWithHTML(`<code>Запрос: ${ctx.message.text}</code>`);
+                const choices =  await sendMessageToChatGpt(ctx.message.text);
+                sendReply(ctx, choices);
         }
     });
-});
+
+    bot.on('voice', (ctx) => {
+        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+            accessDenied(ctx);
+            return;
+        }
+        const { voice, from } = ctx.message;
+        const { id } = from;
+        const { file_id } = voice;
+        ctx.replyWithHTML(`<code>Обрабатываю запрос...</code>`);
+        ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
+            // Получаем ссыль на голосовое сообщение
+            const { href } = fileLink;
+            
+            try {
+                // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
+                const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
+                // Таким образом обходимся без установки ffmpeg и
+                // Промежуточного сохранения и конвертирования файла
+                const propmt = await recognizeVoice(voiceBuffer);
+                ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
+                const choices = await sendMessageToChatGpt(
+                    propmt,
+                    id
+                );
+                sendReply(ctx, choices);
+            } catch (error) {
+                console.log('Failed voice recognition: ', error.response.data.description || error.message);
+                ctx.reply(`Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...`)
+            }
+        });
+    });
+
+    bot.launch();
+}
 
 iamToken.runUpdates()
     .then(_updateTimer => { // Можно отписаться от интервала обновления токенов 
-        bot.launch();
+        runBot();
     });
