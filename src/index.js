@@ -147,7 +147,7 @@ const recognizeVoice = async (buffer) => {
 };
 
 
-const sendMessageToChatGpt = async (message, id) => {
+const sendMessageToChatGpt = async (ctx, message, id) => {
     const assistantRole = assistantInitialContextStore.get(id) || defaultRole;
 
     console.debug('Send request: ', message, assistantRole);
@@ -230,8 +230,11 @@ const runBot = () => {
                     ctx.reply('Неизвестная команда: ' + ctx.message.text);
                     return;
                 }
-                ctx.replyWithHTML(`<code>Запрос: ${ctx.message.text}</code>`);
-                const choices =  await sendMessageToChatGpt(ctx.message.text);
+                const choices =  await sendMessageToChatGpt(
+                    ctx,
+                    ctx.message.text,
+                    ctx.message.from.id
+                );
                 sendReply(ctx, choices);
         }
     });
@@ -257,6 +260,7 @@ const runBot = () => {
                 const propmt = await recognizeVoice(voiceBuffer);
                 ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
                 const choices = await sendMessageToChatGpt(
+                    ctx,
                     propmt,
                     id
                 );
