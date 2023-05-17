@@ -133,7 +133,7 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
 
     if (error) {
         console.debug(error);
-        ctx.replyWithHTML(`Произошла ошибка, попробуйте начать заново: <code>/start</code>`);
+        ctx.replyWithHTML(`Произошла ошибка, попробуйте начать заново: /start`);
         messagesStore.delete(id);
         return;
     }
