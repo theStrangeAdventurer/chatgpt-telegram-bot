@@ -2,14 +2,15 @@ import dotenv from 'dotenv';
 import { Telegraf } from 'telegraf';
 import axios from 'axios';
 import { Configuration, OpenAIApi } from 'openai';
-import showdown from 'showdown';
+import { cleanSpecialSymbols } from './utils/index.js';
+import {
+    assistantContext,
+    roleButtons,
+    defaultRole,
+    roles
+} from './constants/index.js';
 
 dotenv.config();
-
-const converter = new showdown.Converter();
-
-// Пока не испоьлзуется, возможно понадобится, если буду делать web морду
-const getHtmlfromMarkdown = (text) => converter.makeHtml(textStr);
 
 // Аккаунты, которые могут писать этому боту, перечисленые через , (без @) в .env файле
 // Если ACCOUNTS_WHITE_LIST пустая - бот будет отвечать всем
@@ -21,35 +22,6 @@ const configuration = new Configuration({
 
 const openai = new OpenAIApi(configuration);
 
-const roles = {
-    System: 'system',
-    User: 'user',
-    Assistant: 'assistant', 
-}
-
-const defaultRole = 'programmer';
-
-// Изначальный контекст задается с помощью роли system
-// https://platform.openai.com/docs/guides/chat/introduction
-const assistantContext = {
-    programmer: [
-        { role: roles.System, content: 'Ты помогаешь решать задачи программирования и всегда объяснаяешь все максимально подробно и прикладываешь ссылки' },
-    ],
-    designer: [
-        { role: roles.System, content: 'Ты очень творческая натура и общаешься в френдли стиле, готов генерировать новые и смелые идеи' },
-    ],
-    buddy: [
-        { role: roles.System, content: 'Ты лучший друг и всегда добавляешь слово Дружище при обращении' },
-    ]
-};
-
-// callback_data должна быть ключем assistantContext
-// Чтобы добавить роль, ее нужно описать и в assistantContext и в roleButtons
-const roleButtons = [
-    [ { text: "Программист", callback_data: "programmer" }],
-    [ { text: "Дизайнер", callback_data: "designer" }],
-    [ { text: "Дружбан", callback_data: "buddy" }],
-];
 
 // Тут храним контекст сообщений для каждого чата
 const messagesStore = new Map();
@@ -57,23 +29,17 @@ const messagesStore = new Map();
 // Тут храним роль для ассистента для каждого чата
 const assistantInitialContextStore = new Map();
 
-// TODO: Нормально обработать завезервированные символы
 const sendReply = (ctx, choices) => {
-    const textStr = choices.map(({ message }) => message.content).join('\n');
+    const textStr = (choices || []).map(({ message }) => message.content).join('\n');
 
-    ctx.reply(textStr
-            .replace(/\./g, "\\.")
-            .replace(/\-/g, "\\-")
-            .replace(/\(/g, "\\(")
-            .replace(/\)/g, "\\)")
-            .replace(/\!/g, "\\!")
-        , { parse_mode: 'MarkdownV2' })
-        .catch((error) => {
-            // TODO: Добавить нормальный логгер
-            // error?.response?.description || 'Unexpected error'
-            console.log('Error: ', error?.response?.description || error);
-            ctx.reply(textStr);
-        })
+    if (textStr)
+        ctx.reply(cleanSpecialSymbols(textStr), { parse_mode: 'MarkdownV2' })
+            .catch((error) => {
+                // TODO: Добавить нормальный логгер
+                // error?.response?.description || 'Unexpected error'
+                console.error('Error: ', error?.response?.description || error);
+                ctx.reply(textStr);
+            })
 }
 
 const accessDenied = (ctx) => {
@@ -104,7 +70,7 @@ const getIamToken = async () => {
         });
         return data;
     } catch (err) {
-        console.log('Error get iam token: ', err.response.description || err.message)
+        console.error('Error get iam token: ', err.response.description || err.message)
         return { iamToken: null };
     }
 }
@@ -129,7 +95,7 @@ const replyWithRoles = (ctx) => {
     ctx.reply('Выбери роль ассистента: ', {
         reply_markup: {
             inline_keyboard: roleButtons
-        } 
+        }
     });
 }
 
@@ -146,11 +112,10 @@ const recognizeVoice = async (buffer) => {
     return response.data?.result || 'Не распознано' ;
 };
 
-
 const sendMessageToChatGpt = async (ctx, message, id) => {
     const assistantRole = assistantInitialContextStore.get(id) || defaultRole;
 
-    console.debug('Send request: ', message, assistantRole);
+    console.debug(`Send request: [${assistantRole}] ${message}` );
 
     const initialContext = [
         ...assistantContext[assistantRole]
@@ -162,8 +127,6 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
         ...messages,
         { role: roles.User, content: message }
     ];
-
-    console.dir(messages);
 
     const help = await requestAssist(messages);
     const { choices, error } = help;
@@ -185,8 +148,19 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     return choices;
 }
 
-const runBot = () => {
+const sendTypingAction = (ctx) => {
+    ctx.sendChatAction('typing');
 
+    const timer = setInterval(() => {
+        ctx.sendChatAction('typing');
+    }, 1000);
+
+    return function stop() {
+        clearInterval(timer);
+    };
+};
+
+const runBot = () => {
     const bot = new Telegraf(process.env.BOT_API_KEY);
 
     bot.on('callback_query', (ctx) => {
@@ -206,76 +180,91 @@ const runBot = () => {
         }
 
         ctx.reply('Неизвестная команда: ' + data);
+    });
+
+    bot.hears(/\/start/, (ctx) => {
+        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+            accessDenied(ctx);
+            return;
+        }
+        if (messagesStore.has(ctx.message.from.id)) {
+            messagesStore.delete(ctx.message.from.id);
+        }
+        replyWithRoles(ctx);
+    })
+
+    bot.hears(/\/role/, (ctx) => {
+        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+            accessDenied(ctx);
+            return;
+        }
+        if (messagesStore.has(ctx.message.from.id)) {
+            messagesStore.delete(ctx.message.from.id);
+        }
+        replyWithRoles(ctx);
+    })
+
+    bot.on('message', async (ctx) => {
+        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
+            accessDenied(ctx);
+            return;
+        }
+
+        if (ctx.message.voice) {
+            const { voice, from } = ctx.message;
+            const { id } = from;
+            const { file_id } = voice;
+            ctx.replyWithHTML(`<code>Обрабатываю запрос...</code>`);
+            ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
+                // Получаем ссыль на голосовое сообщение
+                const { href } = fileLink;
+     
+                try {
+                    // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
+                    const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
+                    // Таким образом обходимся без установки ffmpeg и
+                    // Промежуточного сохранения и конвертирования файла
+                    const propmt = await recognizeVoice(voiceBuffer);
+                    await ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
+                    const stopTyping = sendTypingAction(ctx);
+    
+                    const choices = await sendMessageToChatGpt(
+                        ctx,
+                        propmt,
+                        id
+                    );
+                    stopTyping();
+                    sendReply(ctx, choices);
+                } catch (error) {
+                    console.debug('Failed voice recognition: ', error.response.data.description || error.message);
+                    ctx.reply(`Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...`)
+                }
+            });
+            return;
+        }
+        if (ctx.message.text.startsWith('/')) {
+            ctx.reply('Неизвестная команда: ' + ctx.message.text);
+            return;
+        }
+
+        const stopTyping = sendTypingAction(ctx);
         
-    });
+        const choices =  await sendMessageToChatGpt(
+            ctx,
+            ctx.message.text,
+            ctx.message.from.id
+        );
 
-    bot.on('text', async (ctx) => {
-        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-            accessDenied(ctx);
-            return;
-        }
-        switch(ctx.message.text) {
-            case '/start':
-                if (messagesStore.has(ctx.message.from.id)) {
-                    messagesStore.delete(ctx.message.from.id);
-                }
-                replyWithRoles(ctx);
-                break;
-            case '/role':
-                replyWithRoles(ctx);
-                break;
-            default:
-                // Все команды обработаны в case выше
-                if (ctx.message.text.startsWith('/')) {
-                    ctx.reply('Неизвестная команда: ' + ctx.message.text);
-                    return;
-                }
-                const choices =  await sendMessageToChatGpt(
-                    ctx,
-                    ctx.message.text,
-                    ctx.message.from.id
-                );
-                sendReply(ctx, choices);
-        }
-    });
+        stopTyping();
 
-    bot.on('voice', (ctx) => {
-        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-            accessDenied(ctx);
-            return;
-        }
-        const { voice, from } = ctx.message;
-        const { id } = from;
-        const { file_id } = voice;
-        ctx.replyWithHTML(`<code>Обрабатываю запрос...</code>`);
-        ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
-            // Получаем ссыль на голосовое сообщение
-            const { href } = fileLink;
- 
-            try {
-                // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
-                const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
-                // Таким образом обходимся без установки ffmpeg и
-                // Промежуточного сохранения и конвертирования файла
-                const propmt = await recognizeVoice(voiceBuffer);
-                ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
-                const choices = await sendMessageToChatGpt(
-                    ctx,
-                    propmt,
-                    id
-                );
-                sendReply(ctx, choices);
-            } catch (error) {
-                console.log('Failed voice recognition: ', error.response.data.description || error.message);
-                ctx.reply(`Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...`)
-            }
-        });
-    });
+        sendReply(ctx, choices);
+    })
 
     bot.launch();
 }
 
-iamToken.runUpdates()
+iamToken.runUpdates() // Выписываем токен для конвертации голосовых в текст и только после этого запускаем бота
     .then(_updateTimer => { // Можно отписаться от интервала обновления токенов 
+        console.debug(`✨ Bot started ✨`)
         runBot();
     });
