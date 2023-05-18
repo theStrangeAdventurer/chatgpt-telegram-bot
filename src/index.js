@@ -1,149 +1,130 @@
-import dotenv from 'dotenv';
+
+import i18next from 'i18next';
 import { Telegraf } from 'telegraf';
 import axios from 'axios';
-import { Configuration, OpenAIApi } from 'openai';
-import { cleanSpecialSymbols } from './utils/index.js';
+import { createRequire } from 'node:module';
+import path from 'node:path';
+
+import './utils/bootstrap.js'; // !!! Этот импорт должен быть первым
+import { sendReplyFromAssistant } from './utils/chat.js';
+import { recognizeVoice, iamToken } from './utils/yandex.js';
+import { requestAssist } from './utils/openai.js';
+
 import {
-    assistantContext,
-    roleButtons,
-    defaultRole,
-    roles
+    getAssistantContext,
+    getCharactersButtons,
+    characterDefault,
+    roles,
+    supportedLangs,
+    langDefault,
+    accounts,
+    languageButtons
 } from './constants/index.js';
 
-dotenv.config();
+const require = createRequire(import.meta.url);
 
-// Аккаунты, которые могут писать этому боту, перечисленые через , (без @) в .env файле
-// Если ACCOUNTS_WHITE_LIST пустая - бот будет отвечать всем
-const accounts = (process.env.ACCOUNTS_WHITE_LIST || '').trim().split(',');
-
-const configuration = new Configuration({
-  apiKey: process.env.GPT_API_KEY,
-});
-
-const openai = new OpenAIApi(configuration);
-
-
-// Тут храним контекст сообщений для каждого чата
-const messagesStore = new Map();
-
-// Тут храним роль для ассистента для каждого чата
-const assistantInitialContextStore = new Map();
-
-const sendReply = (ctx, choices) => {
-    const textStr = (choices || []).map(({ message }) => message.content).join('\n');
-
-    if (textStr)
-        ctx.reply(cleanSpecialSymbols(textStr), { parse_mode: 'MarkdownV2' })
-            .catch((error) => {
-                // TODO: Добавить нормальный логгер
-                // error?.response?.description || 'Unexpected error'
-                console.error('Error: ', error?.response?.description || error);
-                ctx.reply(textStr);
-            })
-}
-
-const accessDenied = (ctx) => {
-    ctx.reply('Извини, я тебя не знаю...')
-}
-
-const requestAssist = async (messages = []) => {
-    try {
-        const { data } = await openai.createChatCompletion({
-            model: 'gpt-3.5-turbo',
-            messages: messages
-        });
-    
-        return data;
-    } catch (error) {
-        return { choices: [], error: error }
-    }
-};
+i18next.init({
+    lng: langDefault,
+    debug: false,
+    resources: supportedLangs.reduce((acc, lang) => {
+        acc[lang] = { translation: require(path.resolve(process.cwd(), 'src', 'locales', `${lang}.json`)) };
+        return acc;
+    }, {})
+  });
 
 /**
- * Получение iam токена https://cloud.yandex.ru/docs/iam/operations/iam-token/create
- * @returns {Promise<{ iamToken: string; expiresAt?: string }>}
+ * Стор, в кототом храним контекст чатов с ботом
+ * @type {Map<number, { lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
  */
-const getIamToken = async () => {
-    try {
-        const { data } = await axios.post('https://iam.api.cloud.yandex.net/iam/v1/tokens', {
-            yandexPassportOauthToken: process.env.YA_PASSPORT_TOKEN
-        });
-        return data;
-    } catch (err) {
-        console.error('Error get iam token: ', err.response.description || err.message)
-        return { iamToken: null };
-    }
+const chatContextStore = new Map();
+
+const initialChatContext = {
+    lang: langDefault,
+    messages: [],
+    assistantCharacter: characterDefault,
+};
+
+const getReplyId = (ctx) => {
+    if (ctx.message)
+        return ctx.message.from.id;
+    
+    return ctx.update?.callback_query?.from.id
 }
 
-getIamToken();
+const getUsername = (ctx) => {
+    if (ctx.message)
+        return ctx.message.from.username;
+    
+    return ctx.update?.callback_query?.message?.chat?.username
+}
 
-// Концепции https://cloud.yandex.ru/docs/iam/concepts/authorization/iam-token
-const iamToken = {
-    value: null,
-    async runUpdates() {
-        const { iamToken } = await getIamToken();
-        this.value = iamToken;
-        const interval = setInterval(async () => {
-            const { iamToken: intervalToken } = await getIamToken();
-            this.value = intervalToken;
-        }, 1000 * 60 * 60); // Раз в час выписываем новый iam токен, потому что он протухает за 12 часов
-        return interval;
-    }
+const setUserLanguage = async (ctx) => {
+    const lang = chatContextStore.get(getReplyId(ctx))?.lang || langDefault;
+    await i18next.changeLanguage(lang);
+}
+
+const accessDenied = async (t, ctx) => {
+    await setUserLanguage(ctx);
+    ctx.reply(t('system.messages.unknown-chat'));
 }
 
 const replyWithRoles = (ctx) => {
-    ctx.reply('Выбери роль ассистента: ', {
+    ctx.reply( i18next.t('system.messages.choose-character') + ': ', {
         reply_markup: {
-            inline_keyboard: roleButtons
+            inline_keyboard: getCharactersButtons(i18next.t, i18next.language)
         }
     });
 }
 
-const recognizeVoice = async (buffer) => {
-    const response = await axios({
-        method: 'post',
-        url: `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=${process.env.BUCKET_ID}&lang=ru-RU`,
-        headers: {
-          Authorization: `Bearer ${iamToken.value}`,
-          'Content-Type': 'application/octet-stream'
-        },
-        data: buffer
-      });
-    return response.data?.result || 'Не распознано' ;
-};
+const replyWithLanguageButtons= (ctx) => {
+    ctx.reply( i18next.t('system.messages.choose-character') + ': ', {
+        reply_markup: {
+            inline_keyboard: [
+                languageButtons
+            ]
+        }
+    });
+}
 
 const sendMessageToChatGpt = async (ctx, message, id) => {
-    const assistantRole = assistantInitialContextStore.get(id) || defaultRole;
+    if (!chatContextStore.has(id)) {
+        chatContextStore.set(id, {
+            ...initialChatContext,
+        });
+    }
+    const assistantCharacter = chatContextStore.get(id).assistantCharacter;
 
-    console.debug(`Send request: [${assistantRole}] ${message}` );
+    console.debug(`Send request: [${assistantCharacter}] ${message}` );
 
     const initialContext = [
-        ...assistantContext[assistantRole]
+        ...getAssistantContext(i18next.t, {
+            language: 'javascript' // FIXME: пробросить язык для программиста
+        })[assistantCharacter]
     ];
 
-    let messages = messagesStore.get(id) || initialContext;
+    if (!chatContextStore.get(id).messages.length) {
+        chatContextStore.set(id, {
+            ...chatContextStore.get(id),
+            messages: initialContext
+        })
+    }
 
-    messages = [
-        ...messages,
-        { role: roles.User, content: message }
-    ];
+    chatContextStore.get(id).messages.push({ role: roles.User, content: message });
 
-    const help = await requestAssist(messages);
+    const help = await requestAssist(chatContextStore.get(id).messages);
     const { choices, error } = help;
 
     if (error) {
         console.debug(error);
-        ctx.replyWithHTML(`Произошла ошибка, попробуйте начать заново: /start`);
-        messagesStore.delete(id);
+        ctx.replyWithHTML(i18next.t('system.messages.error'));
+        eraseMessages(getId(ctx));
         return;
     }
 
-    messages = [
-        ...messages,
+    chatContextStore.get(id).messages = [
+        ...chatContextStore.get(id).messages,
         ...choices.map(({ message }) => ({ role: message.role, content: message.content }))
     ];
-
-    messagesStore.set(id, messages);
 
     return choices;
 }
@@ -160,53 +141,80 @@ const sendTypingAction = (ctx) => {
     };
 };
 
+const eraseMessages = (id) => {
+    if (chatContextStore.has(id) && chatContextStore.get(id).messages?.length) {
+        chatContextStore.set(id, {
+            ...chatContextStore.get(id),
+            messages: []
+        });
+    }
+}
+
 const runBot = () => {
     const bot = new Telegraf(process.env.BOT_API_KEY);
 
-    bot.on('callback_query', (ctx) => {
-        const username = ctx.update.callback_query.message.chat.username;
-        if (accounts.length && !accounts.includes(username)) {
-            accessDenied(ctx);
+    bot.on('callback_query', async (ctx) => {
+        if (accounts.length && !accounts.includes(getUsername(ctx))) {
+            accessDenied(i18next.t, ctx);
             return;
         }
         const data = ctx.update.callback_query.data;
-        const id = ctx.update.callback_query.from.id;
+        const id = getReplyId(ctx);
 
-        if (assistantContext[data]) {
-            ctx.reply('Выбрана роль: ' + data + ', весь предыдущий контекст забывается...');
-            assistantInitialContextStore.set(id, data);
-            messagesStore.delete(id);
-            return;
+        switch (data) {
+            case 'en':
+            case 'ru':
+                chatContextStore.set(id, {
+                    ...chatContextStore.get(id) || initialChatContext,
+                    lang: data
+                });
+                await setUserLanguage(ctx);
+                ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`);
+                return;
+            default:
+                if (getAssistantContext(i18next.t, {
+                    language: 'javascript' // FIXME: добавить выбор языков
+                })[data]) {
+                    ctx.reply(i18next.t('system.messages.change-character', { character: data }));
+                    chatContextStore.set(id, {
+                        ...chatContextStore.get(id) || initialChatContext,
+                        assistantCharacter: data,
+                    });
+                    return eraseMessages(id);
+                }
         }
-
-        ctx.reply('Неизвестная команда: ' + data);
+        ctx.reply(i18next.t('system.messages.unknown-command', { command: data }));
     });
 
-    bot.hears(/\/start/, (ctx) => {
-        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-            accessDenied(ctx);
+    bot.hears(/\/lang/, (ctx) => {
+        if (accounts.length && !accounts.includes(getUsername(ctx))) {
+            accessDenied(i18next.t, ctx);
             return;
         }
-        if (messagesStore.has(ctx.message.from.id)) {
-            messagesStore.delete(ctx.message.from.id);
+        replyWithLanguageButtons(ctx);
+    })
+
+    bot.hears(/\/start/, (ctx) => {
+        if (accounts.length && !accounts.includes(getUsername(ctx))) {
+            accessDenied(i18next.t, ctx);
+            return;
         }
+        eraseMessages(getReplyId(ctx));
         replyWithRoles(ctx);
     })
 
     bot.hears(/\/role/, (ctx) => {
-        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-            accessDenied(ctx);
+        if (accounts.length && !accounts.includes(getUsername(ctx))) {
+            accessDenied(i18next.t, ctx);
             return;
         }
-        if (messagesStore.has(ctx.message.from.id)) {
-            messagesStore.delete(ctx.message.from.id);
-        }
+        eraseMessages(getReplyId(ctx));
         replyWithRoles(ctx);
     })
 
     bot.on('message', async (ctx) => {
-        if (accounts.length && !accounts.includes(ctx.message.from.username)) {
-            accessDenied(ctx);
+        if (accounts.length && !accounts.includes(getUsername(ctx))) {
+            accessDenied(i18next.t, ctx);
             return;
         }
 
@@ -214,7 +222,8 @@ const runBot = () => {
             const { voice, from } = ctx.message;
             const { id } = from;
             const { file_id } = voice;
-            ctx.replyWithHTML(`<code>Обрабатываю запрос...</code>`);
+            await setUserLanguage(ctx);
+            ctx.replyWithHTML(`<code>${i18next.t('system.messages.processing')}</code>`);
             ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
                 // Получаем ссыль на голосовое сообщение
                 const { href } = fileLink;
@@ -224,26 +233,28 @@ const runBot = () => {
                     const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
                     // Таким образом обходимся без установки ffmpeg и
                     // Промежуточного сохранения и конвертирования файла
-                    const propmt = await recognizeVoice(voiceBuffer);
-                    await ctx.replyWithHTML(`<code>Запрос: ${propmt}</code>`);
+                    // А значит - сокращаем время ответа
+                    await setUserLanguage(ctx);
+                    const prompt = await recognizeVoice(voiceBuffer, i18next.language);
+                    await ctx.replyWithHTML(`<code>${i18next.t('system.messages.prompt', { prompt })}</code>`);
                     const stopTyping = sendTypingAction(ctx);
     
                     const choices = await sendMessageToChatGpt(
                         ctx,
-                        propmt,
+                        prompt,
                         id
                     );
                     stopTyping();
-                    sendReply(ctx, choices);
+                    sendReplyFromAssistant(ctx, choices);
                 } catch (error) {
-                    console.debug('Failed voice recognition: ', error.response.data.description || error.message);
-                    ctx.reply(`Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...`)
+                    console.debug('Failed voice recognition: ', error?.response?.data.description || error.message);
+                    ctx.reply(i18next.t('system.messages.error.voice')); 
                 }
             });
             return;
         }
         if (ctx.message.text.startsWith('/')) {
-            ctx.reply('Неизвестная команда: ' + ctx.message.text);
+            ctx.reply(i18next.t('system.messages.unknown-command', { command: ctx.message.text }));
             return;
         }
 
@@ -252,12 +263,12 @@ const runBot = () => {
         const choices =  await sendMessageToChatGpt(
             ctx,
             ctx.message.text,
-            ctx.message.from.id
+            getReplyId(ctx)
         );
 
         stopTyping();
 
-        sendReply(ctx, choices);
+        sendReplyFromAssistant(ctx, choices);
     })
 
     bot.launch();

@@ -1,0 +1,19 @@
+{
+    "system.messages.lang-changed": "You have changed the language to {{lang}}",
+    "system.messages.choose-character": "Choose the personality of the assistant.",
+    "system.messages.prompt": "Query: {{prompt}}",
+    "system.messages.processing": "I am processing the request...",
+    "system.messages.error": "An error has occurred, please try starting over: /start",
+    "system.messages.error.voice": "Something went wrong, please try communicating using text and we will fix it...",
+    "system.messages.unknown-chat": "Sorry, I don't know who you are...",
+    "system.messages.change-character": "Changing assistant's character: {{character}}, all previous context has been removed...",
+    "system.messages.unknown-command": "Unknown command: {{command}}",
+    "characters.programmer.button": "Programmer",
+    "characters.programmer.context": "You are a programmer, you respond concisely, try to provide links to sources, sometimes joke about code, default code examples on {{language}}",
+    "characters.designer.button": "Designer",
+    "characters.designer.context": "You are a UX/UI specialist, you approach text generation issues very creatively",
+    "characters.buddy.button": "Buddy",
+    "characters.buddy.context": "You are a buddy, you communicate informally, using the word Man when addressing",
+    "characters.languageTeacher.button": "English teacher",
+    "characters.languageTeacher.context": "You are an English teacher, always pointing out the mistakes that the user made and explaining how to do it right"
+}

@@ -1,0 +1,19 @@
+{
+    "system.messages.lang-changed": "Вы изменили язык на {{lang}}",
+    "system.messages.choose-character": "Выбери характер ассистента",
+    "system.messages.prompt": "Запрос: {{prompt}}",
+    "system.messages.processing": "Обрабатываю запрос...",
+    "system.messages.error": "Произошла ошибка, попробуйте начать заново: /start",
+    "system.messages.error.voice": "Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...",
+    "system.messages.unknown-chat": "Извини, я тебя не знаю...",
+    "system.messages.unknown-command": "Неизвестная команда: {{command}}",
+    "system.messages.change-character": "Смена характера ассистента: {{character}}, весь предыдущий контекст удален...",
+    "characters.programmer.button": "Программист",
+    "characters.programmer.context": "Ты программист, отвечаешь лаконично, стараешься прикладывать ссылки на источники, иногда щутишь странные шутки про код, примеры кода по умолчанию на {{language}}",
+    "characters.designer.button": "Дизайнер",
+    "characters.designer.context": "Ты UX/UI специалист, подходишь к вопросам генерации текстов очень творчески",
+    "characters.buddy.button": "Приятель",
+    "characters.buddy.context": "Ты приятель, общаешься неформально, при обращении используешь слово Дружище",
+    "characters.languageTeacher.button": "Учитель английского",
+    "characters.languageTeacher.context": "Ты учитель по английскому языку, всегда указываешь на ошибки, которые допустил пользователь и объясняешь как правильно"
+}

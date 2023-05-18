@@ -16,11 +16,12 @@
 
 ### Создайте .env файл в корне с таким содержимым
 
-```
+```sh
 BOT_API_KEY=<API ключ из @BotFather>
 YA_PASSPORT_TOKEN=<https://oauth.yandex.ru/authorize?response_type=token&client_id=1a6990aa636648e9b2ef855fa7bec2fb>
 BUCKET_ID=<ID бакета в https://cloud.yandex.ru/folders/<ID>>
 GPT_API_KEY=<https://platform.openai.com/account/api-keys>
+ACCOUNTS_WHITE_LIST=login1,login2 # Логины для которых должен быть доступен бот, если не указаны, бот будет доступен для всех
 ```
 
 ### Установка пакетов и старт
