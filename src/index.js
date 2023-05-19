@@ -128,7 +128,7 @@ const commands = {
         desc: () => i18next.t('bot.commands.lang'),
         re: /\/lang/,
         fn: (ctx) => {
-            replyWithLanguageButtons(ctx)
+            replyWithLanguageButtons(ctx, i18next.t)
         }
     },
     start: {

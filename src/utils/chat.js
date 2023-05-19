@@ -84,7 +84,7 @@ export const replyWithProgrammingLanguages = async (ctx, i18next) => {
  * @param {import('i18next').t} t 
  */
 export const replyWithLanguageButtons= (ctx, t) => {
-    ctx.reply(i18next.t('system.messages.choose-character') + ': ', {
+    ctx.reply(t('system.messages.choose-character') + ': ', {
         reply_markup: {
             inline_keyboard: [
                 languageButtons
