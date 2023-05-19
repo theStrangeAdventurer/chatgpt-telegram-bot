@@ -140,15 +140,16 @@ const commands = {
         }
     },
     async setCommands(ctx) {
-        await setUserLanguage(ctx, i18next, chatContextStore);
-        const _commands = Object.keys(commands)
-            .filter(c => typeof commands[c] !== "function")
-            .map(command => ({
-                command,
-                description: commands[command].desc()
-            }));
-        const result = await bot.setMyCommands(_commands);
-        console.debug('Set commands: ', _commands, result);
+        // FIXME: Починить команды
+        // await setUserLanguage(ctx, i18next, chatContextStore);
+        // const _commands = Object.keys(commands)
+        //     .filter(c => typeof commands[c] !== "function")
+        //     .map(command => ({
+        //         command,
+        //         description: commands[command].desc()
+        //     }));
+        // const result = await bot.setMyCommands(_commands);
+        // console.debug('Set commands: ', _commands, result);
     }
 };
 
