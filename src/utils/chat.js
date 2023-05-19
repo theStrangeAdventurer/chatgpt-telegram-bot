@@ -1,5 +1,5 @@
 import { cleanSpecialSymbols } from './common.js';
-import { getCharactersButtons, languageButtons, programmingLangButtons } from '../constants/index.js';
+import { getCharactersButtons, languageButtons, programmingLangButtons, langDefault } from '../constants/index.js';
 
 export const sendReplyFromAssistant = (ctx, choices) => {
     const textStr = (choices || []).map(({ message }) => message.content).join('\n');
