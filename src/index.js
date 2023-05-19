@@ -6,19 +6,27 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import './utils/bootstrap.js'; // !!! Этот импорт должен быть первым
-import { sendReplyFromAssistant } from './utils/chat.js';
+import {
+    sendReplyFromAssistant,
+    replyWithRoles,
+    accessDenied,
+    setUserLanguage,
+    getUsername,
+    getReplyId,
+    replyWithLanguageButtons,
+    replyWithProgrammingLanguages
+} from './utils/chat.js';
 import { recognizeVoice, iamToken } from './utils/yandex.js';
 import { requestAssist } from './utils/openai.js';
 
 import {
     getAssistantContext,
-    getCharactersButtons,
     characterDefault,
     roles,
     supportedLangs,
     langDefault,
     accounts,
-    languageButtons
+    characters
 } from './constants/index.js';
 
 const require = createRequire(import.meta.url);
@@ -34,7 +42,7 @@ i18next.init({
 
 /**
  * Стор, в кототом храним контекст чатов с ботом
- * @type {Map<number, { lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
+ * @type {Map<number, { assistantCharacterExtra: Record<string, string>;lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
  */
 const chatContextStore = new Map();
 
@@ -42,49 +50,8 @@ const initialChatContext = {
     lang: langDefault,
     messages: [],
     assistantCharacter: characterDefault,
+    assistantCharacterExtra: {}
 };
-
-const getReplyId = (ctx) => {
-    if (ctx.message)
-        return ctx.message.from.id;
-    
-    return ctx.update?.callback_query?.from.id
-}
-
-const getUsername = (ctx) => {
-    if (ctx.message)
-        return ctx.message.from.username;
-    
-    return ctx.update?.callback_query?.message?.chat?.username
-}
-
-const setUserLanguage = async (ctx) => {
-    const lang = chatContextStore.get(getReplyId(ctx))?.lang || langDefault;
-    await i18next.changeLanguage(lang);
-}
-
-const accessDenied = async (t, ctx) => {
-    await setUserLanguage(ctx);
-    ctx.reply(t('system.messages.unknown-chat'));
-}
-
-const replyWithRoles = (ctx) => {
-    ctx.reply( i18next.t('system.messages.choose-character') + ': ', {
-        reply_markup: {
-            inline_keyboard: getCharactersButtons(i18next.t, i18next.language)
-        }
-    });
-}
-
-const replyWithLanguageButtons= (ctx) => {
-    ctx.reply( i18next.t('system.messages.choose-character') + ': ', {
-        reply_markup: {
-            inline_keyboard: [
-                languageButtons
-            ]
-        }
-    });
-}
 
 const sendMessageToChatGpt = async (ctx, message, id) => {
     if (!chatContextStore.has(id)) {
@@ -93,14 +60,15 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
         });
     }
     const assistantCharacter = chatContextStore.get(id).assistantCharacter;
+    const extra = chatContextStore.get(id).assistantCharacterExtra;
 
-    console.debug(`Send request: [${assistantCharacter}] ${message}` );
+    console.debug(`Send request: [${assistantCharacter}] ${message}\nextra: ${JSON.stringify(extra, null, 2)}` );
 
     const initialContext = [
-        ...getAssistantContext(i18next.t, {
-            language: 'javascript' // FIXME: пробросить язык для программиста
-        })[assistantCharacter]
+        ...getAssistantContext(i18next.t, extra)[assistantCharacter]
     ];
+
+
 
     if (!chatContextStore.get(id).messages.length) {
         chatContextStore.set(id, {
@@ -110,7 +78,7 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     }
 
     chatContextStore.get(id).messages.push({ role: roles.User, content: message });
-
+    console.debug('Send request to chat gpt:', chatContextStore.get(id).messages.map(({ role, content }) => `Role:${role}:${content}`).join('\n'));
     const help = await requestAssist(chatContextStore.get(id).messages);
     const { choices, error } = help;
 
@@ -150,17 +118,65 @@ const eraseMessages = (id) => {
     }
 }
 
+/**
+ * @type {import('telegraf').Telegram}
+ */
+let bot;
+
+const commands = {
+    lang: {
+        desc: () => i18next.t('bot.commands.lang'),
+        re: /\/lang/,
+        fn: (ctx) => {
+            replyWithLanguageButtons(ctx)
+        }
+    },
+    start: {
+        desc: () => i18next.t('bot.commands.lang'),
+        re: /\/start/,
+        fn: (ctx) => {
+            eraseMessages(getReplyId(ctx));
+            replyWithRoles(ctx, i18next);
+        }
+    },
+    async setCommands(ctx) {
+        await setUserLanguage(ctx, i18next, chatContextStore);
+        const _commands = Object.keys(commands)
+            .filter(c => typeof commands[c] !== "function")
+            .map(command => ({
+                command,
+                description: commands[command].desc()
+            }));
+        const result = await bot.setMyCommands(_commands);
+        console.debug('Set commands: ', _commands, result);
+    }
+};
+
 const runBot = () => {
-    const bot = new Telegraf(process.env.BOT_API_KEY);
+    bot = new Telegraf(process.env.BOT_API_KEY, {
+        handlerTimeout: 90_000 * 5 // Chat GPT Может отвечать долго, значение по умолчанию 90 сек
+    });
 
     bot.on('callback_query', async (ctx) => {
         if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(i18next.t, ctx);
+            accessDenied(ctx, i18next);
             return;
         }
         const data = ctx.update.callback_query.data;
         const id = getReplyId(ctx);
 
+        if (data?.startsWith('programming:')) {
+            const [, language] = data.split(':');
+            chatContextStore.set(id, {
+                ...(chatContextStore.get(id) || initialChatContext),
+                assistantCharacterExtra: { language },
+                messages: getAssistantContext(i18next.t, { language })[characters.programmer]
+            });
+            const characterCtx = chatContextStore.get(id).messages[0].content;
+            console.debug('Set programmer context: ', characterCtx);
+            ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: characters.programmer })}</code>`);
+            return;
+        }
         switch (data) {
             case 'en':
             case 'ru':
@@ -168,53 +184,48 @@ const runBot = () => {
                     ...chatContextStore.get(id) || initialChatContext,
                     lang: data
                 });
-                await setUserLanguage(ctx);
+                commands.setCommands(ctx);
+                await setUserLanguage(ctx, i18next, chatContextStore);
                 ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`);
                 return;
-            default:
-                if (getAssistantContext(i18next.t, {
-                    language: 'javascript' // FIXME: добавить выбор языков
-                })[data]) {
-                    ctx.reply(i18next.t('system.messages.change-character', { character: data }));
+            default: {
+                const characterExtra = chatContextStore.get(id)?.assistantCharacterExtra || initialChatContext.assistantCharacterExtra;
+                if (getAssistantContext(i18next.t, characterExtra)[data]) {
                     chatContextStore.set(id, {
-                        ...chatContextStore.get(id) || initialChatContext,
-                        assistantCharacter: data,
-                    });
+                        ...(chatContextStore.get(id) || initialChatContext),
+                        assistantCharacterExtra: characterExtra,
+                        messages: getAssistantContext(i18next.t, characterExtra)[data]
+                    })
+                    if (data === characters.programmer) {
+                        replyWithProgrammingLanguages(ctx, i18next);
+                    } else {
+                        ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: data })}</code>`);
+                        const characterCtx = chatContextStore.get(id).messages[0].content;
+                        console.debug('Set context: ', characterCtx);
+                    }
                     return eraseMessages(id);
                 }
+            }   
         }
         ctx.reply(i18next.t('system.messages.unknown-command', { command: data }));
     });
 
-    bot.hears(/\/lang/, (ctx) => {
-        if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(i18next.t, ctx);
-            return;
-        }
-        replyWithLanguageButtons(ctx);
-    })
-
-    bot.hears(/\/start/, (ctx) => {
-        if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(i18next.t, ctx);
-            return;
-        }
-        eraseMessages(getReplyId(ctx));
-        replyWithRoles(ctx);
-    })
-
-    bot.hears(/\/role/, (ctx) => {
-        if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(i18next.t, ctx);
-            return;
-        }
-        eraseMessages(getReplyId(ctx));
-        replyWithRoles(ctx);
-    })
+    Object.keys(commands)
+        .filter(c => typeof commands[c] !== "function")
+        .forEach(command => {
+            const { re, fn } = commands[command];
+            bot.hears(re, (ctx) => {
+                if (accounts.length && !accounts.includes(getUsername(ctx))) {
+                    accessDenied(ctx, i18next);
+                    return;
+                }
+                fn(ctx);
+            })
+    });
 
     bot.on('message', async (ctx) => {
         if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(i18next.t, ctx);
+            accessDenied(ctx, i18next);
             return;
         }
 
@@ -222,7 +233,7 @@ const runBot = () => {
             const { voice, from } = ctx.message;
             const { id } = from;
             const { file_id } = voice;
-            await setUserLanguage(ctx);
+            await setUserLanguage(ctx, i18next, chatContextStore);
             ctx.replyWithHTML(`<code>${i18next.t('system.messages.processing')}</code>`);
             ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
                 // Получаем ссыль на голосовое сообщение
@@ -234,7 +245,7 @@ const runBot = () => {
                     // Таким образом обходимся без установки ffmpeg и
                     // Промежуточного сохранения и конвертирования файла
                     // А значит - сокращаем время ответа
-                    await setUserLanguage(ctx);
+                    await setUserLanguage(ctx, i18next, chatContextStore);
                     const prompt = await recognizeVoice(voiceBuffer, i18next.language);
                     await ctx.replyWithHTML(`<code>${i18next.t('system.messages.prompt', { prompt })}</code>`);
                     const stopTyping = sendTypingAction(ctx);
@@ -279,3 +290,6 @@ iamToken.runUpdates() // Выписываем токен для конверта
         console.debug(`✨ Bot started ✨`)
         runBot();
     });
+    
+process.once('SIGINT', () => bot?.stop('SIGINT'));
+process.once('SIGTERM', () => bot?.stop('SIGTERM'));

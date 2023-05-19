@@ -6,7 +6,6 @@ export const langDefault = ['ru'];
 // Если ACCOUNTS_WHITE_LIST пустая - бот будет отвечать всем
 export const accounts = (process.env.ACCOUNTS_WHITE_LIST || '').trim().split(',');
 
-console.log('accounts', accounts)
 export const roles = {
     System: 'system',
     User: 'user',
@@ -25,6 +24,21 @@ export const languageButtons = [
     { text: '🇷🇺 Русский', callback_data: 'ru' },
 ];
 
+export const programmingLangButtons = [
+    [
+        { text: 'Javascript', callback_data: 'programming:js' },
+        { text: 'NodeJS', callback_data: 'programming:nodejs' },
+        { text: 'Python', callback_data: 'programming:python' },
+    ],
+    [
+        { text: 'Php', callback_data: 'programming:php' },
+        { text: 'Rust', callback_data: 'programming:rust' },
+        { text: 'Go', callback_data: 'programming:go' },
+        { text: 'Solidity', callback_data: 'programming:solidity' },
+        { text: 'Any', callback_data: 'programming:-' },
+    ]
+];
+
 /**
  * Изначальный контекст для ChatGpt
  * 
@@ -35,20 +49,26 @@ export const languageButtons = [
  * @param {Record<string, any>} interpolation 
  * @returns {Record<string, Array<{ role: string, content: string  }>>}
  */
-export const getAssistantContext = (t, interpolation = {}) => ({
-    [characters.programmer]: [
-        { role: roles.System, content: t('characters.programmer.context', interpolation) },
-    ],
-    [characters.designer]: [
-        { role: roles.System, content: t('characters.designer.context', interpolation) },
-    ],
-    [characters.buddy]: [
-        { role: roles.System, content: t('characters.buddy.context', interpolation) },
-    ],
-    [characters.languageTeacher]: [
-        { role: roles.System, content: t('characters.languageTeacher.context', interpolation) },
-    ],
-});
+export const getAssistantContext = (t, interpolation = {}) => {
+    const programmerContext = interpolation.language === '-'
+        ? t('characters.programmer.context.any', interpolation)
+        : t('characters.programmer.context', interpolation);
+
+    return {
+        [characters.programmer]: [
+            { role: roles.System, content: programmerContext },
+        ],
+        [characters.designer]: [
+            { role: roles.System, content: t('characters.designer.context', interpolation) },
+        ],
+        [characters.buddy]: [
+            { role: roles.System, content: t('characters.buddy.context', interpolation) },
+        ],
+        [characters.languageTeacher]: [
+            { role: roles.System, content: t('characters.languageTeacher.context', interpolation) },
+        ],
+    }
+};
 
 /**
  * Чтобы добавить персонажа, которого будет отыгрывать chat GPT,
