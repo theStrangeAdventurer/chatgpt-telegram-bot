@@ -58,21 +58,24 @@ const initialChatContext = {
     lang: langDefault,
     messages: [],
     assistantCharacter: characterDefault,
-    assistantCharacterExtra: {}
+    assistantCharacterExtra: { language: 'javascript' } // Default language JS ¯\_(ツ)_/¯ 
 };
 
-const sendMessageToChatGpt = async (ctx, message, id) => {
+const checkChatContext = (id) => {
     if (!chatContextStore.has(id)) {
         chatContextStore.set(id, {
             ...initialChatContext,
         });
     }
+}
+
+const sendMessageToChatGpt = async (ctx, message, id) => {
+    checkChatContext(id);
     await setUserLanguage(ctx, i18next, chatContextStore);
     const assistantCharacter = chatContextStore.get(id).assistantCharacter;
     const extra = chatContextStore.get(id).assistantCharacterExtra;
 
     console.debug(`Send request: [${assistantCharacter}] ${message}\nextra: ${JSON.stringify(extra, null, 2)}` );
-
     const initialContext = [
         ...getAssistantContext(i18next.t, extra)[assistantCharacter]
     ];
@@ -94,7 +97,7 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     if (error) {
         console.debug(error);
         ctx.replyWithHTML(i18next.t('system.messages.error'));
-        eraseMessages(getId(ctx));
+        eraseMessages(getReplyId(ctx));
         return;
     }
 
@@ -106,16 +109,33 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     return choices;
 }
 
+/**
+ * 
+ * @param {import('telegraf').Context} ctx 
+ * @returns 
+ */
 const sendTypingAction = (ctx) => {
-    ctx.sendChatAction('typing');
+    let stop;
+
+    const sendAction = async () => {
+        try {
+            await ctx.sendChatAction('typing');
+        } catch (error) {
+            console.debug('Send typing action error: ', error);
+            stop && stop();
+        }
+    }
+
+    sendAction();
 
     const timer = setInterval(() => {
-        ctx.sendChatAction('typing');
-    }, 1000);
+        sendAction();
+    }, 2000);
 
-    return function stop() {
+    stop = () => {
         clearInterval(timer);
     };
+    return stop;
 };
 
 const eraseMessages = (id) => {
@@ -143,7 +163,15 @@ const commands = {
             replyWithRoles(ctx, i18next);
         }
     },
-    async setCommands() {
+    async setCommands(ctx) {
+        if (ctx) {
+            await setUserLanguage(
+                ctx,
+                i18next,
+                chatContextStore
+            )
+        }
+         
         const _commands = Object.keys(commands)
             .filter(c => typeof commands[c] !== "function")
             .map(command => ({
@@ -186,7 +214,6 @@ const runBot = async () => {
                     ...chatContextStore.get(id) || initialChatContext,
                     lang: data
                 });
-                commands.setCommands(ctx);
                 await setUserLanguage(ctx, i18next, chatContextStore);
                 ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`);
                 return;
@@ -215,12 +242,13 @@ const runBot = async () => {
     Object.keys(commands)
         .filter(c => typeof commands[c] !== "function")
         .forEach(command => {
-            const { re, fn,  } = commands[command];
+            const { fn,  } = commands[command];
             bot.command(command, (ctx) => {
                 if (accounts.length && !accounts.includes(getUsername(ctx))) {
                     accessDenied(ctx, i18next);
                     return;
                 }
+                checkChatContext(getReplyId(ctx));
                 fn(ctx);
             })
     });
