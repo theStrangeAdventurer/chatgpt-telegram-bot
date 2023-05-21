@@ -46,6 +46,14 @@ i18next.init({
  */
 const chatContextStore = new Map();
 
+/**
+ * @type {import('telegraf').Telegram}
+ */
+const bot = new Telegraf(process.env.BOT_API_KEY, {
+    handlerTimeout: 90_000 * 5 // Chat GPT Может отвечать долго, значение по умолчанию 90 сек
+});
+
+
 const initialChatContext = {
     lang: langDefault,
     messages: [],
@@ -59,6 +67,7 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
             ...initialChatContext,
         });
     }
+    await setUserLanguage(ctx, i18next, chatContextStore);
     const assistantCharacter = chatContextStore.get(id).assistantCharacter;
     const extra = chatContextStore.get(id).assistantCharacterExtra;
 
@@ -118,11 +127,6 @@ const eraseMessages = (id) => {
     }
 }
 
-/**
- * @type {import('telegraf').Telegram}
- */
-let bot;
-
 const commands = {
     lang: {
         desc: () => i18next.t('bot.commands.lang'),
@@ -132,32 +136,29 @@ const commands = {
         }
     },
     start: {
-        desc: () => i18next.t('bot.commands.lang'),
+        desc: () => i18next.t('bot.commands.start'),
         re: /\/start/,
         fn: (ctx) => {
             eraseMessages(getReplyId(ctx));
             replyWithRoles(ctx, i18next);
         }
     },
-    async setCommands(ctx) {
-        // FIXME: Починить команды
-        // await setUserLanguage(ctx, i18next, chatContextStore);
-        // const _commands = Object.keys(commands)
-        //     .filter(c => typeof commands[c] !== "function")
-        //     .map(command => ({
-        //         command,
-        //         description: commands[command].desc()
-        //     }));
-        // const result = await bot.setMyCommands(_commands);
-        // console.debug('Set commands: ', _commands, result);
+    async setCommands() {
+        const _commands = Object.keys(commands)
+            .filter(c => typeof commands[c] !== "function")
+            .map(command => ({
+                command,
+                description: commands[command].desc()
+            }));
+        const result = await bot.telegram.setMyCommands(_commands);
+        console.debug('Set commands: ', {
+            result,
+            commands: _commands.map(({ command:c, description:d }) => `/${c}:${d}`).join('\n')
+        });
     }
 };
 
-const runBot = () => {
-    bot = new Telegraf(process.env.BOT_API_KEY, {
-        handlerTimeout: 90_000 * 5 // Chat GPT Может отвечать долго, значение по умолчанию 90 сек
-    });
-
+const runBot = async () => {
     bot.on('callback_query', async (ctx) => {
         if (accounts.length && !accounts.includes(getUsername(ctx))) {
             accessDenied(ctx, i18next);
@@ -214,8 +215,8 @@ const runBot = () => {
     Object.keys(commands)
         .filter(c => typeof commands[c] !== "function")
         .forEach(command => {
-            const { re, fn } = commands[command];
-            bot.hears(re, (ctx) => {
+            const { re, fn,  } = commands[command];
+            bot.command(command, (ctx) => {
                 if (accounts.length && !accounts.includes(getUsername(ctx))) {
                     accessDenied(ctx, i18next);
                     return;
@@ -259,8 +260,8 @@ const runBot = () => {
                     stopTyping();
                     sendReplyFromAssistant(ctx, choices);
                 } catch (error) {
-                    console.debug('Failed voice recognition: ', error?.response?.data.description || error.message);
-                    ctx.reply(i18next.t('system.messages.error.voice')); 
+                    console.debug('Failed voice recognition: ', error?.response?.data.description || error?.message);
+                    ctx.reply(i18next.t('system.messages.error.voice'));
                 }
             });
             return;
@@ -271,7 +272,6 @@ const runBot = () => {
         }
 
         const stopTyping = sendTypingAction(ctx);
-        
         const choices =  await sendMessageToChatGpt(
             ctx,
             ctx.message.text,
@@ -282,14 +282,14 @@ const runBot = () => {
 
         sendReplyFromAssistant(ctx, choices);
     })
-
+    await commands.setCommands();
     bot.launch();
+    console.debug(`✨ Bot started ✨`);
 }
 
 iamToken.runUpdates() // Выписываем токен для конвертации голосовых в текст и только после этого запускаем бота
     .then(_updateTimer => { // Можно отписаться от интервала обновления токенов 
-        console.debug(`✨ Bot started ✨`)
-        runBot();
+        runBot()
     });
     
 process.once('SIGINT', () => bot?.stop('SIGINT'));

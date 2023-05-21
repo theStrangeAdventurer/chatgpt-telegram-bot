@@ -10,6 +10,6 @@ export function cleanMarkdown(text) {
     return markdownEscape(text);
 }
 
-export const cleanSpecialSymbols = (textStr) => textStr.replace(/([\*\|\~\=\.\\\-\{\}\(\)\!])/g, '\\$1');
+export const cleanSpecialSymbols = (textStr) => textStr.replace(/([\#\*\|\~\=\.\\\-\{\}\(\)\!])/g, '\\$1');
    
   
