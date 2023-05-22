@@ -20,9 +20,10 @@ export const sendReplyFromAssistant = (ctx, choices) => {
  * Ответ голосом все кроме блоков кода, код скинет в чат
  * 
  * @param {import('telegraf').Context} ctx 
- * @param {Array<{ voiceData: { texts: string[]; codeBlocks: string[] } }>} choices 
+ * @param {Array<{ voiceData: { texts: string[]; codeBlocks: string[] } }>} choices
+ * @param {import('i18next')} i18next
  */
-export const sendVoiceAssistantResponse = async (ctx, choices) => {
+export const sendVoiceAssistantResponse = async (ctx, choices, i18next) => {
     for (const choice of choices) {
         const { texts, codeBlocks } = choice.voiceData;
         while (texts.length) {
@@ -30,7 +31,7 @@ export const sendVoiceAssistantResponse = async (ctx, choices) => {
             if (!voiceMessage)
                 continue;
 
-            const voiceBuff = await vocalizeText(voiceMessage);
+            const voiceBuff = await vocalizeText(voiceMessage, i18next.language);
             voiceBuff && await ctx.replyWithVoice({ source: voiceBuff });
             if (codeBlocks.length) {
                 const codeBlock = codeBlocks.shift();

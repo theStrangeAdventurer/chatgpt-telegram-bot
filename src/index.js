@@ -226,7 +226,12 @@ const runBot = async () => {
             case 'ru':
                 chatContextStore.set(id, {
                     ...chatContextStore.get(id) || initialChatContext,
-                    lang: data
+                    /**
+                     * ru-RU, en-EN !!! Важно для преобразования текста в голос  ¯\_(ツ)_/¯ 
+                     * Иначе получаю ошибку из vocalizeText
+                     * {"error_code":"BAD_REQUEST","error_message":"Error while parsing and validating request: Request voice is applicable for Ru language only: filipp"}
+                     */
+                    lang: `${data}-${data.toUpperCase()}`
                 });
                 await setUserLanguage(ctx, i18next, chatContextStore);
                 ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`);
@@ -341,12 +346,12 @@ const runBot = async () => {
                             }
                         })
 
-                        sendVoiceAssistantResponse(ctx, preparedForVoiceResponse)
+                        sendVoiceAssistantResponse(ctx, preparedForVoiceResponse, i18next)
                             .catch((error) => {
-                                console.debug('Send voice repsponse error: ', error?.response?.data?.toString() || error);
+                                const errMessage = error?.response?.data?.toString() || error?.message
+                                console.debug('Send voice response error: ', errMessage);
                             })
-                            .finally(() => stopTyping())
-                        ;
+                            .finally(() => stopTyping());
                         return;
                     }
                     stopTyping();

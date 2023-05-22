@@ -1,6 +1,6 @@
-export const supportedLangs = ['en', 'ru'];
+export const supportedLangs = ['en-EN', 'ru-RU'];
 
-export const langDefault = ['ru'];
+export const langDefault = ['ru-RU'];
 
 // Аккаунты, которые могут писать этому боту, перечисленые через , (без @) в .env файле
 // Если ACCOUNTS_WHITE_LIST пустая - бот будет отвечать всем

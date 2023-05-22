@@ -42,7 +42,7 @@ export const getIamToken = async () => {
  * @param {'ru' | 'en'} lang 
  * @returns {string}
  */
-export const recognizeVoice = async (buffer, lang = 'ru') => {
+export const recognizeVoice = async (buffer, lang = 'ru-RU') => {
     const response = await axios({
         method: 'post',
         url: `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=${process.env.BUCKET_ID}&lang=${lang}`,
@@ -55,7 +55,7 @@ export const recognizeVoice = async (buffer, lang = 'ru') => {
     return response.data?.result || '' ;
 };
 
-export const vocalizeText = async (text, lang = 'ru') => {
+export const vocalizeText = async (text, lang = 'ru-RU') => {
     const formData = new FormData();
 
     formData.append('text', text);
