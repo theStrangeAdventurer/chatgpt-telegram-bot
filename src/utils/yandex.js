@@ -1,4 +1,23 @@
 import axios from 'axios';
+import FormData from 'form-data';
+
+/**
+ * Получаем и обновляем iam токен
+ * Концепции https://cloud.yandex.ru/docs/iam/concepts/authorization/iam-token
+ * @type{{value: null | string; runUpdates: () => Promise<NodeJS.Timer>}}
+ */
+export const iamToken = {
+    value: null,
+    async runUpdates() {
+        const { iamToken } = await getIamToken();
+        this.value = iamToken;
+        const interval = setInterval(async () => {
+            const { iamToken: intervalToken } = await getIamToken();
+            this.value = intervalToken;
+        }, 1000 * 60 * 60); // Раз в час выписываем новый iam токен, потому что он протухает за 12 часов
+        return interval;
+    }
+}
 
 /**
  * Получение iam токена https://cloud.yandex.ru/docs/iam/operations/iam-token/create
@@ -36,20 +55,23 @@ export const recognizeVoice = async (buffer, lang = 'ru') => {
     return response.data?.result || '' ;
 };
 
-/**
- * Получаем и обновляем iam токен
- * Концепции https://cloud.yandex.ru/docs/iam/concepts/authorization/iam-token
- * @type{{value: null | string; runUpdates: () => Promise<NodeJS.Timer>}}
- */
-export const iamToken = {
-    value: null,
-    async runUpdates() {
-        const { iamToken } = await getIamToken();
-        this.value = iamToken;
-        const interval = setInterval(async () => {
-            const { iamToken: intervalToken } = await getIamToken();
-            this.value = intervalToken;
-        }, 1000 * 60 * 60); // Раз в час выписываем новый iam токен, потому что он протухает за 12 часов
-        return interval;
-    }
+export const vocalizeText = async (text, lang = 'ru') => {
+    const formData = new FormData();
+
+    formData.append('text', text);
+    formData.append('lang', lang);
+    formData.append('voice', 'filipp');
+    formData.append('folderId', process.env.BUCKET_ID);
+
+    const headers = {
+        Authorization: `Bearer ${iamToken.value}`,
+        ...formData.getHeaders()
+    };
+
+    const response = await axios.post('https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize', formData, {
+        headers,
+        responseType: 'arraybuffer',
+    });
+
+    return response.data; 
 }

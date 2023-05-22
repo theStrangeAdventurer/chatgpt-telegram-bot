@@ -1,5 +1,6 @@
 import { cleanSpecialSymbols } from './common.js';
 import { getCharactersButtons, languageButtons, programmingLangButtons, langDefault } from '../constants/index.js';
+import { vocalizeText } from './yandex.js';
 
 export const sendReplyFromAssistant = (ctx, choices) => {
     const textStr = (choices || []).map(({ message }) => message.content).join('\n');
@@ -12,6 +13,35 @@ export const sendReplyFromAssistant = (ctx, choices) => {
                 console.error('Error: ', error?.response?.description || error);
                 ctx.reply(textStr);
             })
+}
+
+/**
+ * 
+ * Ответ голосом все кроме блоков кода, код скинет в чат
+ * 
+ * @param {import('telegraf').Context} ctx 
+ * @param {Array<{ voiceData: { texts: string[]; codeBlocks: string[] } }>} choices 
+ */
+export const sendVoiceAssistantResponse = async (ctx, choices) => {
+    for (const choice of choices) {
+        const { texts, codeBlocks } = choice.voiceData;
+        while (texts.length) {
+            const voiceMessage = texts.shift();
+            if (!voiceMessage)
+                continue;
+
+            const voiceBuff = await vocalizeText(voiceMessage);
+            voiceBuff && await ctx.replyWithVoice({ source: voiceBuff });
+            if (codeBlocks.length) {
+                const codeBlock = codeBlocks.shift();
+                codeBlock && await ctx.reply(cleanSpecialSymbols(codeBlock), { parse_mode: 'MarkdownV2' })
+            }
+        }
+        while (codeBlocks.length) { // По идее сюда управление уже не должно перейти
+            const codeBlock = codeBlocks.shift();
+            codeBlock && await ctx.reply(cleanSpecialSymbols(codeBlock), { parse_mode: 'MarkdownV2' })
+        }
+    }
 }
 
 
@@ -88,6 +118,24 @@ export const replyWithLanguageButtons= (ctx, t) => {
         reply_markup: {
             inline_keyboard: [
                 languageButtons
+            ]
+        }
+    });
+}
+
+
+/**
+ * @param {import('telegraf').Context} ctx 
+ * @param {import('i18next').t} t 
+ */
+export const replyWithVoiceButtons= (ctx, t) => {
+    ctx.reply(t('system.messages.voice-reply') + ': ', {
+        reply_markup: {
+            inline_keyboard: [
+                [
+                    { text: 'Да', callback_data: 'enable_voice_response' },
+                    { text: 'Нет', callback_data: 'disable_voice_response' },
+                ]
             ]
         }
     });

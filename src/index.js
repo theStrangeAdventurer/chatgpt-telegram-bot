@@ -8,13 +8,15 @@ import path from 'node:path';
 import './utils/bootstrap.js'; // !!! Этот импорт должен быть первым
 import {
     sendReplyFromAssistant,
+    sendVoiceAssistantResponse,
     replyWithRoles,
     accessDenied,
     setUserLanguage,
     getUsername,
     getReplyId,
     replyWithLanguageButtons,
-    replyWithProgrammingLanguages
+    replyWithProgrammingLanguages,
+    replyWithVoiceButtons,
 } from './utils/chat.js';
 import { recognizeVoice, iamToken } from './utils/yandex.js';
 import { requestAssist } from './utils/openai.js';
@@ -42,7 +44,7 @@ i18next.init({
 
 /**
  * Стор, в кототом храним контекст чатов с ботом
- * @type {Map<number, { assistantCharacterExtra: Record<string, string>;lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
+ * @type {Map<number, { enableVoiceResponse: boolean; assistantCharacterExtra: Record<string, string>;lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
  */
 const chatContextStore = new Map();
 
@@ -58,6 +60,7 @@ const initialChatContext = {
     lang: langDefault,
     messages: [],
     assistantCharacter: characterDefault,
+    enableVoiceResponse: false,
     assistantCharacterExtra: { language: 'javascript' } // Default language JS ¯\_(ツ)_/¯ 
 };
 
@@ -79,8 +82,6 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     const initialContext = [
         ...getAssistantContext(i18next.t, extra)[assistantCharacter]
     ];
-
-
 
     if (!chatContextStore.get(id).messages.length) {
         chatContextStore.set(id, {
@@ -150,14 +151,18 @@ const eraseMessages = (id) => {
 const commands = {
     lang: {
         desc: () => i18next.t('bot.commands.lang'),
-        re: /\/lang/,
         fn: (ctx) => {
             replyWithLanguageButtons(ctx, i18next.t)
         }
     },
+    voice_response: {
+        desc: () => i18next.t('bot.commands.voice'),
+        fn: (ctx) => {
+            replyWithVoiceButtons(ctx, i18next.t);
+        }
+    },
     start: {
         desc: () => i18next.t('bot.commands.start'),
-        re: /\/start/,
         fn: (ctx) => {
             eraseMessages(getReplyId(ctx));
             replyWithRoles(ctx, i18next);
@@ -208,6 +213,15 @@ const runBot = async () => {
             return;
         }
         switch (data) {
+            case 'enable_voice_response':
+            case 'disable_voice_response': 
+                const enableVoiceResponse = Boolean(data.startsWith('enable'))
+                chatContextStore.set(id, {
+                    ...chatContextStore.get(id) || initialChatContext,
+                    enableVoiceResponse
+                });
+                ctx.replyWithHTML(`<code>${enableVoiceResponse ? 'Enabled' : 'Disabled' } voice response...</code>`);
+                return;
             case 'en':
             case 'ru':
                 chatContextStore.set(id, {
@@ -259,7 +273,7 @@ const runBot = async () => {
             return;
         }
 
-        if (ctx.message.voice) {
+        if (ctx.message.voice) { // Voice messages handling
             const { voice, from } = ctx.message;
             const { id } = from;
             const { file_id } = voice;
@@ -285,6 +299,56 @@ const runBot = async () => {
                         prompt,
                         id
                     );
+                    if (chatContextStore.get(getReplyId(ctx)).enableVoiceResponse) {
+                        console.log('Enabled voice response');
+
+                        /**
+                         * Выдернет из многострочного текста, участки с кодом
+                         * заключченные в тройные backtick кавычки (формат markdown)
+                         */
+                        const codeRe = /```(.+?)```/gis;
+
+                        const preparedForVoiceResponse = choices.map((choice) => {
+                            const { message } = choice;
+                            const { content } = message;
+
+                            /**
+                             * Участки с кодом, вместе с ```
+                             */
+                            let codeBlocks = [];
+
+                            /**
+                             * Участки с текстом
+                             * по умолчанию весь текст, если он не подходит
+                             * под регулярное выражение
+                             */
+                            let texts = [];
+                            
+                            if (codeRe.test(content)) {
+                                codeBlocks = content.match(codeRe);
+                                const _messages = content.replace(codeRe, '__CODE__');
+                                texts = _messages.split('__CODE__');
+                            } else {
+                                texts = [content]
+                            }
+                           
+                            return {
+                                ...choice,
+                                voiceData: {
+                                    texts,
+                                    codeBlocks,
+                                }
+                            }
+                        })
+
+                        sendVoiceAssistantResponse(ctx, preparedForVoiceResponse)
+                            .catch((error) => {
+                                console.debug('Send voice repsponse error: ', error?.response?.data?.toString() || error);
+                            })
+                            .finally(() => stopTyping())
+                        ;
+                        return;
+                    }
                     stopTyping();
                     sendReplyFromAssistant(ctx, choices);
                 } catch (error) {
