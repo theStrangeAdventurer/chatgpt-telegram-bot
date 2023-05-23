@@ -1,6 +1,7 @@
 import { cleanSpecialSymbols } from './common.js';
 import { getCharactersButtons, languageButtons, programmingLangButtons, langDefault } from '../constants/index.js';
 import { vocalizeText } from './yandex.js';
+import { characters } from '../constants/index.js';
 
 export const sendReplyFromAssistant = (ctx, choices) => {
     const textStr = (choices || []).map(({ message }) => message.content).join('\n');
@@ -22,8 +23,9 @@ export const sendReplyFromAssistant = (ctx, choices) => {
  * @param {import('telegraf').Context} ctx 
  * @param {Array<{ voiceData: { texts: string[]; codeBlocks: string[] } }>} choices
  * @param {import('i18next')} i18next
+ * @param {keyof typeof import('../constants/index.js').characters} character
  */
-export const sendVoiceAssistantResponse = async (ctx, choices, i18next) => {
+export const sendVoiceAssistantResponse = async (ctx, choices, i18next, character) => {
     for (const choice of choices) {
         const { texts, codeBlocks } = choice.voiceData;
         while (texts.length) {
@@ -31,7 +33,8 @@ export const sendVoiceAssistantResponse = async (ctx, choices, i18next) => {
             if (!voiceMessage)
                 continue;
 
-            const voiceBuff = await vocalizeText(voiceMessage, i18next.language);
+            console.debug('sendVoiceAssistantResponse', voiceMessage, i18next.language);
+            const voiceBuff = await vocalizeText(voiceMessage, i18next.language, character);
             voiceBuff && await ctx.replyWithVoice({ source: voiceBuff });
             if (codeBlocks.length) {
                 const codeBlock = codeBlocks.shift();
@@ -115,7 +118,7 @@ export const replyWithProgrammingLanguages = async (ctx, i18next) => {
  * @param {import('i18next').t} t 
  */
 export const replyWithLanguageButtons= (ctx, t) => {
-    ctx.reply(t('system.messages.choose-character') + ': ', {
+    ctx.reply(t('system.messages.choose-lang') + ': ', {
         reply_markup: {
             inline_keyboard: [
                 languageButtons
@@ -123,7 +126,6 @@ export const replyWithLanguageButtons= (ctx, t) => {
         }
     });
 }
-
 
 /**
  * @param {import('telegraf').Context} ctx 

@@ -46,7 +46,25 @@ i18next.init({
  * Стор, в кототом храним контекст чатов с ботом
  * @type {Map<number, { enableVoiceResponse: boolean; assistantCharacterExtra: Record<string, string>;lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
  */
-const chatContextStore = new Map();
+const chatContextStore = new class {
+    constructor() {
+        this._store = new Map();
+    }
+    get(id) {
+        console.debug('chatContextStore:get:' + id);
+        return this._store.get(id);
+    }
+
+    set(id, value) {
+        console.debug('chatContextStore:set:' + id + ':value:' + JSON.stringify(value, null, 1));
+        return this._store.set(id, value);
+    }
+
+    has(id) {
+        console.debug('chatContextStore:has:' + id);
+        return this._store.has(id);
+    }
+};
 
 /**
  * @type {import('telegraf').Telegram}
@@ -65,6 +83,7 @@ const initialChatContext = {
 };
 
 const checkChatContext = (id) => {
+    console.log('checkChatContext:' + id)
     if (!chatContextStore.has(id)) {
         chatContextStore.set(id, {
             ...initialChatContext,
@@ -96,7 +115,7 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     const { choices, error } = help;
 
     if (error) {
-        console.debug(error);
+        console.debug(error.response.data, );
         ctx.replyWithHTML(i18next.t('system.messages.error'));
         eraseMessages(getReplyId(ctx));
         return;
@@ -104,10 +123,10 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
 
     chatContextStore.get(id).messages = [
         ...chatContextStore.get(id).messages,
-        ...choices.map(({ message }) => ({ role: message.role, content: message.content }))
+        ...(choices || []).map(({ message }) => ({ role: message.role, content: message.content }))
     ];
 
-    return choices;
+    return choices || [];
 }
 
 /**
@@ -140,10 +159,11 @@ const sendTypingAction = (ctx) => {
 };
 
 const eraseMessages = (id) => {
-    if (chatContextStore.has(id) && chatContextStore.get(id).messages?.length) {
+    const data = chatContextStore.get(id);
+    if (data?.messages?.length) {
         chatContextStore.set(id, {
-            ...chatContextStore.get(id),
-            messages: []
+            ...data,
+            messages: [],
         });
     }
 }
@@ -241,9 +261,10 @@ const runBot = async () => {
                 if (getAssistantContext(i18next.t, characterExtra)[data]) {
                     chatContextStore.set(id, {
                         ...(chatContextStore.get(id) || initialChatContext),
-                        assistantCharacterExtra: characterExtra,
+                        assistantCharacter: data,
+                        assistantCharacterExtra: characterExtra, // FIXME: тут всегда находится { language: 'javascript' }
                         messages: getAssistantContext(i18next.t, characterExtra)[data]
-                    })
+                    });
                     if (data === characters.programmer) {
                         replyWithProgrammingLanguages(ctx, i18next);
                     } else {
@@ -251,7 +272,7 @@ const runBot = async () => {
                         const characterCtx = chatContextStore.get(id).messages[0].content;
                         console.debug('Set context: ', characterCtx);
                     }
-                    return eraseMessages(id);
+                    return;
                 }
             }   
         }
@@ -283,11 +304,12 @@ const runBot = async () => {
             const { id } = from;
             const { file_id } = voice;
             await setUserLanguage(ctx, i18next, chatContextStore);
+            let stopTyping
             ctx.replyWithHTML(`<code>${i18next.t('system.messages.processing')}</code>`);
             ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
                 // Получаем ссыль на голосовое сообщение
                 const { href } = fileLink;
-     
+
                 try {
                     // Получаем данные в ArrayBuffer и их же передаем в Yandex Speech Kit
                     const { data: voiceBuffer } = await axios.get(href, { responseType: 'arraybuffer' });
@@ -297,7 +319,7 @@ const runBot = async () => {
                     await setUserLanguage(ctx, i18next, chatContextStore);
                     const prompt = await recognizeVoice(voiceBuffer, i18next.language);
                     await ctx.replyWithHTML(`<code>${i18next.t('system.messages.prompt', { prompt })}</code>`);
-                    const stopTyping = sendTypingAction(ctx);
+                    stopTyping = sendTypingAction(ctx);
     
                     const choices = await sendMessageToChatGpt(
                         ctx,
@@ -305,7 +327,7 @@ const runBot = async () => {
                         id
                     );
                     if (chatContextStore.get(getReplyId(ctx)).enableVoiceResponse) {
-                        console.log('Enabled voice response');
+                        console.debug('Enabled voice response');
 
                         /**
                          * Выдернет из многострочного текста, участки с кодом
@@ -345,20 +367,25 @@ const runBot = async () => {
                                 }
                             }
                         })
-
-                        sendVoiceAssistantResponse(ctx, preparedForVoiceResponse, i18next)
-                            .catch((error) => {
-                                const errMessage = error?.response?.data?.toString() || error?.message
-                                console.debug('Send voice response error: ', errMessage);
-                            })
-                            .finally(() => stopTyping());
+                        await setUserLanguage(ctx, i18next, chatContextStore);
+                        await sendVoiceAssistantResponse(
+                            ctx,
+                            preparedForVoiceResponse,
+                            i18next,
+                            chatContextStore.get(
+                                getReplyId(ctx)
+                            ).assistantCharacter
+                        );
                         return;
                     }
-                    stopTyping();
-                    sendReplyFromAssistant(ctx, choices);
+                    sendReplyFromAssistant(ctx, choices)
                 } catch (error) {
-                    console.debug('Failed voice recognition: ', error?.response?.data.description || error?.message);
+                    const errMessage = error?.response?.data.description || error?.message;
+                    console.debug('Failed voice recognition: ', errMessage);
+                    console.dir(Buffer.isBuffer(error?.response?.data) ? error?.response?.data.toString() : error?.response?.data);
                     ctx.reply(i18next.t('system.messages.error.voice'));
+                } finally {
+                    stopTyping()
                 }
             });
             return;

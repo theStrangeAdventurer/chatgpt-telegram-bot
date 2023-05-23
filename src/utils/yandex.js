@@ -1,5 +1,6 @@
 import axios from 'axios';
 import FormData from 'form-data';
+import { characters } from '../constants/index.js';
 
 /**
  * Получаем и обновляем iam токен
@@ -55,12 +56,33 @@ export const recognizeVoice = async (buffer, lang = 'ru-RU') => {
     return response.data?.result || '' ;
 };
 
-export const vocalizeText = async (text, lang = 'ru-RU') => {
+export const vocalizeText = async (text, lang, character) => {
     const formData = new FormData();
+    // https://cloud.yandex.com/en/docs/speechkit/tts/voices
+    let voice;
+    let emotion;
+
+    switch (lang) {
+        case 'en-EN':
+            voice = 'john';
+            break;
+        case 'ru-RU':
+            if (character === characters.buddy) {
+                emotion = 'good';
+                voice = 'ermil';
+            } else {
+                emotion = 'good';
+                voice = 'alena';
+            }
+            break;
+    }
+
+    if (emotion)
+        formData.append('emotion', emotion);
 
     formData.append('text', text);
     formData.append('lang', lang);
-    formData.append('voice', 'filipp');
+    formData.append('voice', voice);
     formData.append('folderId', process.env.BUCKET_ID);
 
     const headers = {

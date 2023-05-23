@@ -4,6 +4,7 @@
     "bot.commands.start": "Reset the dialog, return to the beginning and select the character whose role the bot will perform",
     "system.messages.voice-reply": "Respond to messages with your voice?",
     "system.messages.lang-changed": "You have changed the language to {{lang}}",
+    "system.messages.choose-lang": "Choose a language that will affect the recognition of voice messages and voice response",
     "system.messages.choose-programming-language": "Choose your preferred programming language, the bot will write code in it by default (Any - without certain preferences)",
     "system.messages.choose-character": "Choose the personality of the assistant.",
     "system.messages.prompt": "Query: {{prompt}}",

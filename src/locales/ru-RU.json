@@ -6,6 +6,7 @@
     "system.messages.lang-changed": "Вы изменили язык на {{lang}}",
     "system.messages.choose-programming-language": "Выбери предпочтительный язык программирования,\n бот по умолчанию будет писать код на нем \n (Any - без определенных предпочтений)",
     "system.messages.choose-character": "Выбери характер ассистента",
+    "system.messages.choose-lang": "Выбери язык, повлияет на распознавание голосовых сообщений и голосовой ответ",
     "system.messages.prompt": "Запрос: {{prompt}}",
     "system.messages.processing": "Обрабатываю запрос...",
     "system.messages.error": "Произошла ошибка, попробуйте начать заново: /start",
