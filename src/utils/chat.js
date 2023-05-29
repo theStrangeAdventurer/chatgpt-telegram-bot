@@ -12,7 +12,7 @@ export const sendReplyFromAssistant = (ctx, choices) => {
                 // TODO: Добавить нормальный логгер
                 // error?.response?.description || 'Unexpected error'
                 console.error('Error: ', error?.response?.description || error);
-                ctx.reply(textStr);
+                ctx.reply(textStr).catch(() => {});
             })
 }
 
@@ -39,11 +39,19 @@ export const sendVoiceAssistantResponse = async (ctx, choices, i18next, characte
             if (codeBlocks.length) {
                 const codeBlock = codeBlocks.shift();
                 codeBlock && await ctx.reply(cleanSpecialSymbols(codeBlock), { parse_mode: 'MarkdownV2' })
+                    .catch((err) => {
+                        console.error('sendVoiceAssistantResponse: Can\'t send message to user: ' + getReplyId(ctx));
+                        console.error(err?.response?.data || err);
+                    })
             }
         }
         while (codeBlocks.length) { // По идее сюда управление уже не должно перейти
             const codeBlock = codeBlocks.shift();
             codeBlock && await ctx.reply(cleanSpecialSymbols(codeBlock), { parse_mode: 'MarkdownV2' })
+                .catch((err) => {
+                    console.error('sendVoiceAssistantResponse: Can\'t send message to user: ' + getReplyId(ctx));
+                    console.error(err?.response?.data || err);
+                })
         }
     }
 }
@@ -85,7 +93,11 @@ export const setUserLanguage = async (ctx, i18next, chatContextStore) => {
  */
 export const accessDenied = async (ctx, i18next, chatContextStore) => {
     await setUserLanguage(ctx, i18next, chatContextStore);
-    ctx.reply(i18next.t('system.messages.unknown-chat'));
+    ctx.reply(i18next.t('system.messages.unknown-chat'))
+        .catch((err) => {
+            console.error('accessDenied: Can\'t send message to user: ' + getReplyId(ctx));
+            console.error(err?.response?.data || err);
+        })
 }
 
 /**
@@ -97,7 +109,11 @@ export const replyWithRoles = (ctx, i18next) => {
         reply_markup: {
             inline_keyboard: getCharactersButtons(i18next.t, i18next.language)
         }
-    });
+    }).catch((err) => {
+        console.error('replyWithRoles: Can\'t send message to user: ' + getReplyId(ctx));
+        console.error(err?.response?.data || err);
+    })
+
 }
 
 /**
@@ -110,7 +126,10 @@ export const replyWithProgrammingLanguages = async (ctx, i18next) => {
         reply_markup: {
             inline_keyboard: programmingLangButtons
         },
-    });
+    }).catch((err) => {
+        console.error('replyWithProgrammingLanguages: Can\'t send message to user: ' + getReplyId(ctx));
+        console.error(err?.response?.data || err);
+    })
 }
 
 /**
@@ -124,7 +143,10 @@ export const replyWithLanguageButtons= (ctx, t) => {
                 languageButtons
             ]
         }
-    });
+    }).catch((err) => {
+        console.error('replyWithLanguageButtons: Can\'t send message to user: ' + getReplyId(ctx));
+        console.error(err?.response?.data || err);
+    })
 }
 
 /**
@@ -141,5 +163,8 @@ export const replyWithVoiceButtons= (ctx, t) => {
                 ]
             ]
         }
-    });
+    }).catch((err) => {
+        console.error('replyWithVoiceButtons: Can\'t send message to user: ' + getReplyId(ctx));
+        console.error(err?.response?.data || err);
+    })
 }

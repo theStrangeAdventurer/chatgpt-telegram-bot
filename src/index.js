@@ -33,6 +33,9 @@ import {
 
 const require = createRequire(import.meta.url);
 
+// FIXME: добавить логгер!
+// FIXME: переписать на TS
+
 i18next.init({
     lng: langDefault,
     debug: false,
@@ -91,6 +94,13 @@ const checkChatContext = (id) => {
     }
 }
 
+/**
+ * 
+ * @param {import('telegraf').Context} ctx 
+ * @param {string} message 
+ * @param {number} id 
+ * @returns 
+ */
 const sendMessageToChatGpt = async (ctx, message, id) => {
     checkChatContext(id);
     await setUserLanguage(ctx, i18next, chatContextStore);
@@ -116,7 +126,11 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
 
     if (error) {
         console.debug(error.response.data, );
-        ctx.replyWithHTML(i18next.t('system.messages.error'));
+        ctx.replyWithHTML(i18next.t('system.messages.error'))
+            .catch((err) => {
+                console.log('Can\'t send error message');
+                console.error(err);
+            })
         eraseMessages(getReplyId(ctx));
         return;
     }
@@ -229,7 +243,11 @@ const runBot = async () => {
             });
             const characterCtx = chatContextStore.get(id).messages[0].content;
             console.debug('Set programmer context: ', characterCtx);
-            ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: characters.programmer })}</code>`);
+            ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: characters.programmer })}</code>`)
+                .catch((err) => {
+                    console.log('Can\'t send change character message');
+                    console.error(err);
+                })
             return;
         }
         switch (data) {
@@ -240,7 +258,11 @@ const runBot = async () => {
                     ...chatContextStore.get(id) || initialChatContext,
                     enableVoiceResponse
                 });
-                ctx.replyWithHTML(`<code>${enableVoiceResponse ? 'Enabled' : 'Disabled' } voice response...</code>`);
+                ctx.replyWithHTML(`<code>${enableVoiceResponse ? 'Enabled' : 'Disabled' } voice response...</code>`)
+                    .catch((err) => {
+                        console.log('Can\'t send voice message feature status');
+                        console.error(err);
+                    })
                 return;
             case 'en':
             case 'ru':
@@ -254,7 +276,11 @@ const runBot = async () => {
                     lang: `${data}-${data.toUpperCase()}`
                 });
                 await setUserLanguage(ctx, i18next, chatContextStore);
-                ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`);
+                ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`)
+                    .catch((err) => {
+                        console.log('Can\'t send language status');
+                        console.error(err);
+                    })
                 return;
             default: {
                 const characterExtra = chatContextStore.get(id)?.assistantCharacterExtra || initialChatContext.assistantCharacterExtra;
@@ -268,15 +294,23 @@ const runBot = async () => {
                     if (data === characters.programmer) {
                         replyWithProgrammingLanguages(ctx, i18next);
                     } else {
-                        ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: data })}</code>`);
+                        ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: data })}</code>`)
+                            .catch((err) => {
+                                console.log('Can\'t send character change status messsage');
+                                console.error(err);
+                            })
                         const characterCtx = chatContextStore.get(id).messages[0].content;
                         console.debug('Set context: ', characterCtx);
                     }
                     return;
                 }
-            }   
+            }
         }
-        ctx.reply(i18next.t('system.messages.unknown-command', { command: data }));
+        ctx.reply(i18next.t('system.messages.unknown-command', { command: data }))
+            .catch((err) => {
+                console.log('Can\'t send unknown command message');
+                console.error(err);
+            })
     });
 
     Object.keys(commands)
@@ -305,7 +339,11 @@ const runBot = async () => {
             const { file_id } = voice;
             await setUserLanguage(ctx, i18next, chatContextStore);
             let stopTyping
-            ctx.replyWithHTML(`<code>${i18next.t('system.messages.processing')}</code>`);
+            ctx.replyWithHTML(`<code>${i18next.t('system.messages.processing')}</code>`)
+                .catch((err) => {
+                    console.log('Can\'t send processing message');
+                    console.error(err);
+                })
             ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
                 // Получаем ссыль на голосовое сообщение
                 const { href } = fileLink;
@@ -318,7 +356,11 @@ const runBot = async () => {
                     // А значит - сокращаем время ответа
                     await setUserLanguage(ctx, i18next, chatContextStore);
                     const prompt = await recognizeVoice(voiceBuffer, i18next.language);
-                    await ctx.replyWithHTML(`<code>${i18next.t('system.messages.prompt', { prompt })}</code>`);
+                    await ctx.replyWithHTML(`<code>${i18next.t('system.messages.prompt', { prompt })}</code>`)
+                        .catch((err) => {
+                            console.log('Can\'t send user prompt message');
+                            console.error(err);
+                        })
                     stopTyping = sendTypingAction(ctx);
     
                     const choices = await sendMessageToChatGpt(
@@ -383,7 +425,11 @@ const runBot = async () => {
                     const errMessage = error?.response?.data.description || error?.message;
                     console.debug('Failed voice recognition: ', errMessage);
                     console.dir(Buffer.isBuffer(error?.response?.data) ? error?.response?.data.toString() : error?.response?.data);
-                    ctx.reply(i18next.t('system.messages.error.voice'));
+                    ctx.reply(i18next.t('system.messages.error.voice'))
+                        .catch((err) => {
+                            console.log('Can\'t send voice error message');
+                            console.error(err);
+                        })
                 } finally {
                     stopTyping()
                 }
@@ -391,7 +437,11 @@ const runBot = async () => {
             return;
         }
         if (ctx.message.text.startsWith('/')) {
-            ctx.reply(i18next.t('system.messages.unknown-command', { command: ctx.message.text }));
+            ctx.reply(i18next.t('system.messages.unknown-command', { command: ctx.message.text }))
+                .catch((err) => {
+                    console.log('Can\'t send unknown command message');
+                    console.error(err);
+                })
             return;
         }
 
