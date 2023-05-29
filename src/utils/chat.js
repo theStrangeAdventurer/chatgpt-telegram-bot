@@ -83,7 +83,7 @@ export const setUserLanguage = async (ctx, i18next, chatContextStore) => {
  * @param {import('telegraf').Context} ctx 
  * @param {import('i18next')} i18next 
  */
-export const accessDenied = async (ctx, i18next) => {
+export const accessDenied = async (ctx, i18next, chatContextStore) => {
     await setUserLanguage(ctx, i18next, chatContextStore);
     ctx.reply(i18next.t('system.messages.unknown-chat'));
 }

@@ -3,6 +3,23 @@ import FormData from 'form-data';
 import { characters } from '../constants/index.js';
 
 /**
+ * Получение iam токена https://cloud.yandex.ru/docs/iam/operations/iam-token/create
+ * @returns {Promise<{ iamToken: string; expiresAt?: string }>}
+ */
+export const getIamToken = async () => {
+    try {
+        const { data } = await axios.post('https://iam.api.cloud.yandex.net/iam/v1/tokens', {
+            yandexPassportOauthToken: process.env.YA_PASSPORT_TOKEN
+        });
+        return data;
+    } catch (err) {
+        console.error('Error get iam token: ', err?.response?.description || err?.message)
+        return { iamToken: null };
+    }
+}
+
+
+/**
  * Получаем и обновляем iam токен
  * Концепции https://cloud.yandex.ru/docs/iam/concepts/authorization/iam-token
  * @type{{value: null | string; runUpdates: () => Promise<NodeJS.Timer>}}
@@ -17,22 +34,6 @@ export const iamToken = {
             this.value = intervalToken;
         }, 1000 * 60 * 60); // Раз в час выписываем новый iam токен, потому что он протухает за 12 часов
         return interval;
-    }
-}
-
-/**
- * Получение iam токена https://cloud.yandex.ru/docs/iam/operations/iam-token/create
- * @returns {Promise<{ iamToken: string; expiresAt?: string }>}
- */
-export const getIamToken = async () => {
-    try {
-        const { data } = await axios.post('https://iam.api.cloud.yandex.net/iam/v1/tokens', {
-            yandexPassportOauthToken: process.env.YA_PASSPORT_TOKEN
-        });
-        return data;
-    } catch (err) {
-        console.error('Error get iam token: ', err?.response?.description || err?.message)
-        return { iamToken: null };
     }
 }
 

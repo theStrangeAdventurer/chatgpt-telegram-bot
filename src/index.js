@@ -214,7 +214,7 @@ const commands = {
 const runBot = async () => {
     bot.on('callback_query', async (ctx) => {
         if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(ctx, i18next);
+            accessDenied(ctx, i18next, chatContextStore);
             return;
         }
         const data = ctx.update.callback_query.data;
@@ -285,7 +285,7 @@ const runBot = async () => {
             const { fn,  } = commands[command];
             bot.command(command, (ctx) => {
                 if (accounts.length && !accounts.includes(getUsername(ctx))) {
-                    accessDenied(ctx, i18next);
+                    accessDenied(ctx, i18next, chatContextStore);
                     return;
                 }
                 checkChatContext(getReplyId(ctx));
@@ -295,7 +295,7 @@ const runBot = async () => {
 
     bot.on('message', async (ctx) => {
         if (accounts.length && !accounts.includes(getUsername(ctx))) {
-            accessDenied(ctx, i18next);
+            accessDenied(ctx, i18next, chatContextStore);
             return;
         }
 
