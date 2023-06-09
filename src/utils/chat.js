@@ -1,7 +1,7 @@
 import { cleanSpecialSymbols } from './common.js';
 import { getCharactersButtons, languageButtons, programmingLangButtons, langDefault } from '../constants/index.js';
 import { vocalizeText } from './yandex.js';
-import { characters } from '../constants/index.js';
+import { tt } from '../utils/logger.js';
 
 export const sendReplyFromAssistant = (ctx, choices) => {
     const textStr = (choices || []).map(({ message }) => message.content).join('\n');
@@ -9,10 +9,8 @@ export const sendReplyFromAssistant = (ctx, choices) => {
     if (textStr)
         ctx.reply(cleanSpecialSymbols(textStr), { parse_mode: 'MarkdownV2' })
             .catch((error) => {
-                // TODO: Добавить нормальный логгер
-                // error?.response?.description || 'Unexpected error'
-                console.error('Error: ', error?.response?.description || error);
-                ctx.reply(textStr).catch(() => {});
+                tt`w!Can't send reply from assistant, send with text${error}`
+                ctx.reply(textStr).catch((err) => tt`!Can't send reply with text after error${err}`);
             })
 }
 
@@ -33,15 +31,15 @@ export const sendVoiceAssistantResponse = async (ctx, choices, i18next, characte
             if (!voiceMessage)
                 continue;
 
-            console.debug('sendVoiceAssistantResponse', voiceMessage, i18next.language);
+            tt`d!sendVoiceAssistantResponse${{voiceMessage, lang: i18next.language}}`
+
             const voiceBuff = await vocalizeText(voiceMessage, i18next.language, character);
             voiceBuff && await ctx.replyWithVoice({ source: voiceBuff });
             if (codeBlocks.length) {
                 const codeBlock = codeBlocks.shift();
                 codeBlock && await ctx.reply(cleanSpecialSymbols(codeBlock), { parse_mode: 'MarkdownV2' })
                     .catch((err) => {
-                        console.error('sendVoiceAssistantResponse: Can\'t send message to user: ' + getReplyId(ctx));
-                        console.error(err?.response?.data || err);
+                        tt`!sendVoiceAssistantResponse: Can\'t send message to user ${getReplyId(ctx)} ${err}`
                     })
             }
         }
@@ -49,8 +47,7 @@ export const sendVoiceAssistantResponse = async (ctx, choices, i18next, characte
             const codeBlock = codeBlocks.shift();
             codeBlock && await ctx.reply(cleanSpecialSymbols(codeBlock), { parse_mode: 'MarkdownV2' })
                 .catch((err) => {
-                    console.error('sendVoiceAssistantResponse: Can\'t send message to user: ' + getReplyId(ctx));
-                    console.error(err?.response?.data || err);
+                    tt`!sendVoiceAssistantResponse: Can\'t send message to user ${getReplyId(ctx)} ${err}`
                 })
         }
     }
@@ -95,8 +92,7 @@ export const accessDenied = async (ctx, i18next, chatContextStore) => {
     await setUserLanguage(ctx, i18next, chatContextStore);
     ctx.reply(i18next.t('system.messages.unknown-chat'))
         .catch((err) => {
-            console.error('accessDenied: Can\'t send message to user: ' + getReplyId(ctx));
-            console.error(err?.response?.data || err);
+            tt`!accessDenied: Can\'t send message to user: ${getReplyId(ctx)} ${err}`
         })
 }
 
@@ -109,10 +105,7 @@ export const replyWithRoles = (ctx, i18next) => {
         reply_markup: {
             inline_keyboard: getCharactersButtons(i18next.t, i18next.language)
         }
-    }).catch((err) => {
-        console.error('replyWithRoles: Can\'t send message to user: ' + getReplyId(ctx));
-        console.error(err?.response?.data || err);
-    })
+    }).catch((err) => tt`!replyWithRoles: Can\'t send message to user: ${getReplyId(ctx)} ${err}`)
 
 }
 
@@ -126,10 +119,8 @@ export const replyWithProgrammingLanguages = async (ctx, i18next) => {
         reply_markup: {
             inline_keyboard: programmingLangButtons
         },
-    }).catch((err) => {
-        console.error('replyWithProgrammingLanguages: Can\'t send message to user: ' + getReplyId(ctx));
-        console.error(err?.response?.data || err);
     })
+    .catch((err) => tt`!replyWithProgrammingLanguages: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
 }
 
 /**
@@ -143,10 +134,8 @@ export const replyWithLanguageButtons= (ctx, t) => {
                 languageButtons
             ]
         }
-    }).catch((err) => {
-        console.error('replyWithLanguageButtons: Can\'t send message to user: ' + getReplyId(ctx));
-        console.error(err?.response?.data || err);
     })
+    .catch((err) => tt`!replyWithLanguageButtons: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
 }
 
 /**
@@ -163,8 +152,6 @@ export const replyWithVoiceButtons= (ctx, t) => {
                 ]
             ]
         }
-    }).catch((err) => {
-        console.error('replyWithVoiceButtons: Can\'t send message to user: ' + getReplyId(ctx));
-        console.error(err?.response?.data || err);
     })
+    .catch((err) => tt`!replyWithVoiceButtons: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
 }

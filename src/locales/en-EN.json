@@ -11,6 +11,7 @@
     "system.messages.processing": "I am processing the request...",
     "system.messages.error": "An error has occurred, please try starting over: /start",
     "system.messages.error.voice": "Something went wrong, please try communicating using text and we will fix it...",
+    "system.messages.error.voice-forbidden": "I can't answer with my voice, maybe you have limited the sending of voice messages, so I will answer with text.",
     "system.messages.unknown-chat": "Sorry, I don't know who you are...",
     "system.messages.change-character": "Changing assistant's character: {{character}}, all previous context has been removed...",
     "system.messages.unknown-command": "Unknown command: {{command}}",

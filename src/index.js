@@ -6,6 +6,9 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 
 import './utils/bootstrap.js'; // !!! Этот импорт должен быть первым
+
+import { tt } from './utils/logger.js';
+
 import {
     sendReplyFromAssistant,
     sendVoiceAssistantResponse,
@@ -33,9 +36,6 @@ import {
 
 const require = createRequire(import.meta.url);
 
-// FIXME: добавить логгер!
-// FIXME: переписать на TS
-
 i18next.init({
     lng: langDefault,
     debug: false,
@@ -54,17 +54,17 @@ const chatContextStore = new class {
         this._store = new Map();
     }
     get(id) {
-        console.debug('chatContextStore:get:' + id);
+        tt`d!chatContextStore:get ${id}`
         return this._store.get(id);
     }
 
     set(id, value) {
-        console.debug('chatContextStore:set:' + id + ':value:' + JSON.stringify(value, null, 1));
+        tt`d!chatContextStore:set ${id} ${{value}}`
         return this._store.set(id, value);
     }
 
     has(id) {
-        console.debug('chatContextStore:has:' + id);
+        tt`d!chatContextStore:has ${id}`
         return this._store.has(id);
     }
 };
@@ -73,9 +73,8 @@ const chatContextStore = new class {
  * @type {import('telegraf').Telegram}
  */
 const bot = new Telegraf(process.env.BOT_API_KEY, {
-    handlerTimeout: 90_000 * 5 // Chat GPT Может отвечать долго, значение по умолчанию 90 сек
+    handlerTimeout: 90_000 * 20 // Chat GPT Может отвечать долго, значение по умолчанию 90 сек
 });
-
 
 const initialChatContext = {
     lang: langDefault,
@@ -86,7 +85,9 @@ const initialChatContext = {
 };
 
 const checkChatContext = (id) => {
-    console.log('checkChatContext:' + id)
+
+    tt`d!Check chat context ${{id}}`;
+
     if (!chatContextStore.has(id)) {
         chatContextStore.set(id, {
             ...initialChatContext,
@@ -107,7 +108,8 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     const assistantCharacter = chatContextStore.get(id).assistantCharacter;
     const extra = chatContextStore.get(id).assistantCharacterExtra;
 
-    console.debug(`Send request: [${assistantCharacter}] ${message}\nextra: ${JSON.stringify(extra, null, 2)}` );
+    tt`d!Send reques ${{assistantCharacter, message, extra }}`;
+
     const initialContext = [
         ...getAssistantContext(i18next.t, extra)[assistantCharacter]
     ];
@@ -120,16 +122,20 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
     }
 
     chatContextStore.get(id).messages.push({ role: roles.User, content: message });
-    console.debug('Send request to chat gpt:', chatContextStore.get(id).messages.map(({ role, content }) => `Role:${role}:${content}`).join('\n'));
+
+    tt`d!Send request to chat gpt ${{
+        messages: chatContextStore.get(id).messages
+    }}`
+
     const help = await requestAssist(chatContextStore.get(id).messages);
     const { choices, error } = help;
 
     if (error) {
-        console.debug(error.response.data, );
+        tt`!Can't receive message from chat gpt ${error}`
+
         ctx.replyWithHTML(i18next.t('system.messages.error'))
             .catch((err) => {
-                console.log('Can\'t send error message');
-                console.error(err);
+                tt`!Can\'t send error message ${{err}}`
             })
         eraseMessages(getReplyId(ctx));
         return;
@@ -155,7 +161,7 @@ const sendTypingAction = (ctx) => {
         try {
             await ctx.sendChatAction('typing');
         } catch (error) {
-            console.debug('Send typing action error: ', error);
+            tt`d!Send typing action error ${error}`
             stop && stop();
         }
     }
@@ -218,10 +224,7 @@ const commands = {
                 description: commands[command].desc()
             }));
         const result = await bot.telegram.setMyCommands(_commands);
-        console.debug('Set commands: ', {
-            result,
-            commands: _commands.map(({ command:c, description:d }) => `/${c}:${d}`).join('\n')
-        });
+        tt`d!Set commands ${{ result, commands: _commands }}`
     }
 };
 
@@ -242,12 +245,9 @@ const runBot = async () => {
                 messages: getAssistantContext(i18next.t, { language })[characters.programmer]
             });
             const characterCtx = chatContextStore.get(id).messages[0].content;
-            console.debug('Set programmer context: ', characterCtx);
+            tt`d!Set programmer context ${characterCtx}`;
             ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: characters.programmer })}</code>`)
-                .catch((err) => {
-                    console.log('Can\'t send change character message');
-                    console.error(err);
-                })
+                .catch((err) => tt`!Can\'t send change character message ${err}`)
             return;
         }
         switch (data) {
@@ -259,10 +259,7 @@ const runBot = async () => {
                     enableVoiceResponse
                 });
                 ctx.replyWithHTML(`<code>${enableVoiceResponse ? 'Enabled' : 'Disabled' } voice response...</code>`)
-                    .catch((err) => {
-                        console.log('Can\'t send voice message feature status');
-                        console.error(err);
-                    })
+                    .catch((err) => tt`!Can\'t send voice message feature status ${err}`)
                 return;
             case 'en':
             case 'ru':
@@ -277,10 +274,7 @@ const runBot = async () => {
                 });
                 await setUserLanguage(ctx, i18next, chatContextStore);
                 ctx.replyWithHTML(`<code>${i18next.t('system.messages.lang-changed', { lang: data })}</code>`)
-                    .catch((err) => {
-                        console.log('Can\'t send language status');
-                        console.error(err);
-                    })
+                    .catch((err) => tt`!Can\'t send language status ${err}`)
                 return;
             default: {
                 const characterExtra = chatContextStore.get(id)?.assistantCharacterExtra || initialChatContext.assistantCharacterExtra;
@@ -288,29 +282,23 @@ const runBot = async () => {
                     chatContextStore.set(id, {
                         ...(chatContextStore.get(id) || initialChatContext),
                         assistantCharacter: data,
-                        assistantCharacterExtra: characterExtra, // FIXME: тут всегда находится { language: 'javascript' }
+                        assistantCharacterExtra: characterExtra,
                         messages: getAssistantContext(i18next.t, characterExtra)[data]
                     });
                     if (data === characters.programmer) {
                         replyWithProgrammingLanguages(ctx, i18next);
                     } else {
                         ctx.replyWithHTML(`<code>${i18next.t('system.messages.change-character', { character: data })}</code>`)
-                            .catch((err) => {
-                                console.log('Can\'t send character change status messsage');
-                                console.error(err);
-                            })
+                            .catch((err) => tt`!Can\'t send character change status messsage ${err}`)    
                         const characterCtx = chatContextStore.get(id).messages[0].content;
-                        console.debug('Set context: ', characterCtx);
+                        tt`d!Set context${characterCtx}`
                     }
                     return;
                 }
             }
         }
         ctx.reply(i18next.t('system.messages.unknown-command', { command: data }))
-            .catch((err) => {
-                console.log('Can\'t send unknown command message');
-                console.error(err);
-            })
+            .catch((err) => tt`!Can\'t send unknown command message ${err}`)
     });
 
     Object.keys(commands)
@@ -340,10 +328,8 @@ const runBot = async () => {
             await setUserLanguage(ctx, i18next, chatContextStore);
             let stopTyping
             ctx.replyWithHTML(`<code>${i18next.t('system.messages.processing')}</code>`)
-                .catch((err) => {
-                    console.log('Can\'t send processing message');
-                    console.error(err);
-                })
+                .catch((err) => tt`!Can\'t send processing message ${err}`)
+
             ctx.telegram.getFileLink(file_id).then(async (fileLink) => {
                 // Получаем ссыль на голосовое сообщение
                 const { href } = fileLink;
@@ -357,10 +343,8 @@ const runBot = async () => {
                     await setUserLanguage(ctx, i18next, chatContextStore);
                     const prompt = await recognizeVoice(voiceBuffer, i18next.language);
                     await ctx.replyWithHTML(`<code>${i18next.t('system.messages.prompt', { prompt })}</code>`)
-                        .catch((err) => {
-                            console.log('Can\'t send user prompt message');
-                            console.error(err);
-                        })
+                        .catch((err) => tt`!Can\'t send user prompt message ${err}`)    
+                    
                     stopTyping = sendTypingAction(ctx);
     
                     const choices = await sendMessageToChatGpt(
@@ -369,7 +353,7 @@ const runBot = async () => {
                         id
                     );
                     if (chatContextStore.get(getReplyId(ctx)).enableVoiceResponse) {
-                        console.debug('Enabled voice response');
+                        tt`d!Enabled voice response...`;
 
                         /**
                          * Выдернет из многострочного текста, участки с кодом
@@ -417,19 +401,24 @@ const runBot = async () => {
                             chatContextStore.get(
                                 getReplyId(ctx)
                             ).assistantCharacter
-                        );
+                        ).catch(async (err) => {
+                            tt`!Failed send voice message${{
+                                isBuffer: Buffer.isBuffer(err),
+                            }}`
+
+                            await ctx.replyWithHTML(`<code>${i18next.t('system.messages.error.voice-forbidden')}</code>`)
+                                .catch((_err) => tt`!Can\'t send voice error message${{_err}}`)
+
+                            ctx.reply(choices[0].message.content)
+                                .catch((_err) => tt`!Can\'t send text instead voice message${{_err}}`)
+                        });
                         return;
                     }
                     sendReplyFromAssistant(ctx, choices)
                 } catch (error) {
-                    const errMessage = error?.response?.data.description || error?.message;
-                    console.debug('Failed voice recognition: ', errMessage);
-                    console.dir(Buffer.isBuffer(error?.response?.data) ? error?.response?.data.toString() : error?.response?.data);
+                    tt`!Failed voice recognition ${error}`
                     ctx.reply(i18next.t('system.messages.error.voice'))
-                        .catch((err) => {
-                            console.log('Can\'t send voice error message');
-                            console.error(err);
-                        })
+                        .catch((err) => tt`!Can\'t send voice error message${{err}}`)
                 } finally {
                     stopTyping()
                 }
@@ -438,10 +427,7 @@ const runBot = async () => {
         }
         if (ctx.message.text.startsWith('/')) {
             ctx.reply(i18next.t('system.messages.unknown-command', { command: ctx.message.text }))
-                .catch((err) => {
-                    console.log('Can\'t send unknown command message');
-                    console.error(err);
-                })
+                .catch((err) => tt`!Can\'t send unknown command message${{err}}`)
             return;
         }
 
@@ -458,7 +444,7 @@ const runBot = async () => {
     })
     await commands.setCommands();
     bot.launch();
-    console.debug(`✨ Bot started ✨`);
+    tt`✨ Bot started ✨`;
 }
 
 iamToken.runUpdates() // Выписываем токен для конвертации голосовых в текст и только после этого запускаем бота

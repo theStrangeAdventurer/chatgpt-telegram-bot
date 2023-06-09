@@ -1,6 +1,7 @@
 import axios from 'axios';
 import FormData from 'form-data';
 import { characters } from '../constants/index.js';
+import { tt } from './logger.js';
 
 /**
  * Получение iam токена https://cloud.yandex.ru/docs/iam/operations/iam-token/create
@@ -13,7 +14,7 @@ export const getIamToken = async () => {
         });
         return data;
     } catch (err) {
-        console.error('Error get iam token: ', err?.response?.description || err?.message)
+        tt`!Error get iam token:${err}`
         return { iamToken: null };
     }
 }

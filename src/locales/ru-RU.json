@@ -11,6 +11,7 @@
     "system.messages.processing": "Обрабатываю запрос...",
     "system.messages.error": "Произошла ошибка, попробуйте начать заново: /start",
     "system.messages.error.voice": "Что-то пошло не так, попробуй общаться с помощью текста, мы это починим...",
+    "system.messages.error.voice-forbidden": "Не могу ответить голосом, возможно вы ограничили отправку голосовых сообщений, поэтому отвечу текстом",
     "system.messages.unknown-chat": "Извини, я тебя не знаю...",
     "system.messages.unknown-command": "Неизвестная команда: {{command}}",
     "system.messages.change-character": "Смена характера ассистента: {{character}}, весь предыдущий контекст удален...",
