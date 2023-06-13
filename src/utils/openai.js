@@ -13,7 +13,7 @@ const openai = new OpenAIApi(new Configuration({
 export const requestAssist = async (messages = []) => {
     try {
         const { data } = await openai.createChatCompletion({
-            model: 'gpt-3.5-turbo',
+            model: 'gpt-3.5-turbo-16k', // https://platform.openai.com/docs/models/gpt-3-5
             messages: messages
         });
     
