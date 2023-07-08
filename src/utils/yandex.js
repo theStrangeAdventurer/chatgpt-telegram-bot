@@ -48,7 +48,7 @@ export const iamToken = {
 export const recognizeVoice = async (buffer, lang = 'ru-RU') => {
     const response = await axios({
         method: 'post',
-        url: `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=${process.env.BUCKET_ID}&lang=${lang}`,
+        url: `https://stt.api.cloud.yandex.net/speech/v1/stt:recognize?folderId=${process.env.FOLDER_ID}&lang=${lang}`,
         headers: {
           Authorization: `Bearer ${iamToken.value}`,
           'Content-Type': 'application/octet-stream'
@@ -85,7 +85,7 @@ export const vocalizeText = async (text, lang, character) => {
     formData.append('text', text);
     formData.append('lang', lang);
     formData.append('voice', voice);
-    formData.append('folderId', process.env.BUCKET_ID);
+    formData.append('folderId', process.env.FOLDER_ID);
 
     const headers = {
         Authorization: `Bearer ${iamToken.value}`,

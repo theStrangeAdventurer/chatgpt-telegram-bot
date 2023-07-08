@@ -13,7 +13,8 @@ const openai = new OpenAIApi(new Configuration({
 export const requestAssist = async (messages = []) => {
     try {
         const { data } = await openai.createChatCompletion({
-            model: 'gpt-3.5-turbo-16k', // https://platform.openai.com/docs/models/gpt-3-5
+            model: 'gpt-4', // https://platform.openai.com/docs/models
+            // model: 'gpt-3.5-turbo-16k', // Раскомментируйте эту строку и удалите предыдущую, если у вас нет доступа к gpt-4
             messages: messages
         });
     
