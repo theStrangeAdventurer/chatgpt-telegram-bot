@@ -17,7 +17,7 @@ if (process.env.__DEV__) {
     loggers.push({
         stream: process.stdout,
         colorize: true,
-        maxDepth: 0,
+        maxDepth: 10,
     })
 }
 

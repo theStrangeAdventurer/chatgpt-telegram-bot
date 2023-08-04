@@ -5,4 +5,5 @@ export type UserContext = {
     lang: string;
     messages: Array<{ role: string; content: string }>;
     assistantCharacter: string;
+    waitForImagePrompt: boolean;
 }

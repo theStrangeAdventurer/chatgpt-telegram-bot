@@ -21,9 +21,10 @@ import {
     replyWithProgrammingLanguages,
     replyWithVoiceButtons,
     replyWithModel,
+    replyWithImagePropmt,
 } from './utils/chat.js';
 import { recognizeVoice, iamToken } from './utils/yandex.js';
-import { requestAssist } from './utils/openai.js';
+import { requestAssist, generateImage } from './utils/openai.js';
 
 import {
     getAssistantContext,
@@ -89,7 +90,8 @@ const initialChatContext = {
     messages: [],
     assistantCharacter: characterDefault,
     enableVoiceResponse: false,
-    assistantCharacterExtra: { language: 'javascript' } // Default language JS ¯\_(ツ)_/¯ 
+    assistantCharacterExtra: { language: 'javascript' }, // Default language JS ¯\_(ツ)_/¯ 
+    waitForImagePrompt: false,
 };
 
 const checkChatContext = (id) => {
@@ -212,6 +214,21 @@ const toggleModel = (id) => {
 }
 
 const commands = {
+    image: {
+        // FIXME: вынести в ключи локализации
+        desc: () => 'Сгенерировать изображение',
+        fn: (ctx) => {
+            replyWithImagePropmt(ctx, i18next.t);
+            const id = getReplyId(ctx);
+            const data = chatContextStore.get(id);
+
+            chatContextStore.set(id, {
+                ...data,
+                waitForImagePrompt: true
+            });
+        }
+    },
+
     model: {
         desc: () => i18next.t('bot.commands.model'),
         fn: (ctx) => {
@@ -455,6 +472,27 @@ const runBot = async () => {
             });
             return;
         }
+
+        const userContext = chatContextStore.get(getReplyId(ctx))
+        if (userContext?.waitForImagePrompt) {
+            tt`d! waitForImagePrompt`
+            chatContextStore.set(getReplyId(ctx), {
+                ...userContext,
+                waitForImagePrompt: false,
+            })
+            // FIXME: вынести в ключи локализации
+            ctx.replyWithHTML(`<code>Генерирую изображение по запросу: ${ctx.message.text}</code>`);
+            const url = await generateImage(ctx.message.text);
+            if (url) {
+                ctx.sendPhoto(url)
+            } else {
+                // FIXME: вынести в ключи локализации
+                // FIXME: добавить обработку ошибок
+                ctx.replyWithHTML(`<code>Что-то пошло не так, либо ты ввел что-то оскорбительное...</code>`);
+            }
+            return;
+        }
+
         if (ctx.message.text.startsWith('/')) {
             ctx.reply(i18next.t('system.messages.unknown-command', { command: ctx.message.text }))
                 .catch((err) => tt`!Can\'t send unknown command message${{err}}`)

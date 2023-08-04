@@ -168,3 +168,14 @@ export const replyWithModel= (ctx, t, model) => {
     .catch((err) => tt`!replyWithModel: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
 }
 
+/**
+ * @param {import('telegraf').Context} ctx 
+ * @param {import('i18next').t} t
+ */
+export const replyWithImagePropmt= (ctx, t) => {
+    // FIXME: вынести в ключи локализации
+    ctx.reply('Введите описание для генерации картинки')
+    .catch((err) => tt`!replyWithImagePropmt: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
+}
+
+
