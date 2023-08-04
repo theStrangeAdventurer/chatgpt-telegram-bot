@@ -155,3 +155,16 @@ export const replyWithVoiceButtons= (ctx, t) => {
     })
     .catch((err) => tt`!replyWithVoiceButtons: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
 }
+
+/**
+ * @param {import('telegraf').Context} ctx 
+ * @param {import('i18next').t} t
+ * @param {string} model
+ */
+export const replyWithModel= (ctx, t, model) => {
+    ctx.reply(t('system.messages.model-reply', {
+        model
+    }))
+    .catch((err) => tt`!replyWithModel: Can\'t send message to user:${getReplyId(ctx)} ${err}`)
+}
+

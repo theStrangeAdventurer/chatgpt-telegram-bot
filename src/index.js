@@ -20,6 +20,7 @@ import {
     replyWithLanguageButtons,
     replyWithProgrammingLanguages,
     replyWithVoiceButtons,
+    replyWithModel,
 } from './utils/chat.js';
 import { recognizeVoice, iamToken } from './utils/yandex.js';
 import { requestAssist } from './utils/openai.js';
@@ -47,7 +48,7 @@ i18next.init({
 
 /**
  * Стор, в кототом храним контекст чатов с ботом
- * @type {Map<number, { enableVoiceResponse: boolean; assistantCharacterExtra: Record<string, string>;lang: string; messages: Array<{role: string; content: string}>; assistantCharacter: string }>}
+ * @type {Map<number, import('./types').UserContext>}
  */
 const chatContextStore = new class {
     constructor() {
@@ -76,8 +77,15 @@ const bot = new Telegraf(process.env.BOT_API_KEY, {
     handlerTimeout: 90_000 * 20 // Chat GPT Может отвечать долго, значение по умолчанию 90 сек
 });
 
+const DEFAULT_MODEL = 'gpt-3.5-turbo-16k';
+const GPT_4_MODEL = 'gpt-4';
+
+/**
+ * @type {import('./types').UserContext}
+ */
 const initialChatContext = {
     lang: langDefault,
+    model: 'gpt-3.5-turbo-16k',
     messages: [],
     assistantCharacter: characterDefault,
     enableVoiceResponse: false,
@@ -127,7 +135,7 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
         messages: chatContextStore.get(id).messages
     }}`
 
-    const help = await requestAssist(chatContextStore.get(id).messages);
+    const help = await requestAssist(chatContextStore.get(id).messages, chatContextStore.get(id).model);
     const { choices, error } = help;
 
     if (error) {
@@ -150,11 +158,10 @@ const sendMessageToChatGpt = async (ctx, message, id) => {
 }
 
 /**
- * 
  * @param {import('telegraf').Context} ctx 
  * @returns 
  */
-const sendTypingAction = (ctx) => {
+const sendTypingAction = (ctx, timeout = 2000) => {
     let stop;
 
     const sendAction = async () => {
@@ -170,7 +177,7 @@ const sendTypingAction = (ctx) => {
 
     const timer = setInterval(() => {
         sendAction();
-    }, 2000);
+    }, timeout);
 
     stop = () => {
         clearInterval(timer);
@@ -188,7 +195,30 @@ const eraseMessages = (id) => {
     }
 }
 
+const toggleModel = (id) => {
+    const data = chatContextStore.get(id);
+    if (data?.model) {
+        const nextModel = data?.model === DEFAULT_MODEL
+            ? GPT_4_MODEL
+            : DEFAULT_MODEL;
+        
+        chatContextStore.set(id, {
+            ...data,
+            model: nextModel
+        });
+        return nextModel;
+    }
+    return 'toggleModelError: data not found...'
+}
+
 const commands = {
+    model: {
+        desc: () => i18next.t('bot.commands.model'),
+        fn: (ctx) => {
+            const model = toggleModel(getReplyId(ctx));
+            replyWithModel(ctx, i18next.t, model);
+        }
+    },
     lang: {
         desc: () => i18next.t('bot.commands.lang'),
         fn: (ctx) => {

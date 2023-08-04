@@ -1,7 +1,9 @@
 {
+    "bot.commands.model": "Switch the used model 3.5 or 4 (Default gpt 3.5)",
     "bot.commands.voice": "Enable voice response (Experimental feature)",
     "bot.commands.lang": "The choice of language affects the recognition of voice messages and the language of the interface in the bot",
     "bot.commands.start": "Reset the dialog, return to the beginning and select the character whose role the bot will perform",
+    "system.messages.model-reply": "Switched the model to {{model}}",
     "system.messages.voice-reply": "Respond to messages with your voice?",
     "system.messages.lang-changed": "You have changed the language to {{lang}}",
     "system.messages.choose-lang": "Choose a language that will affect the recognition of voice messages and voice response",
